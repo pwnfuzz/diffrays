@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from pathlib import Path
 import ida_domain
 from ida_domain.database import IdaCommandOptions
 
@@ -8,11 +9,19 @@ def sanitize_filename(name):
     # Replace every character that is not a letter, number, or underscore with _
     return re.sub(r'[^A-Za-z0-9_]', '_', name)
 
+def create_folder(file_path):
+    file_path = Path(file_path)
+    folder_name = file_path.stem
+    folder_path = Path(folder_name)
+    folder_path.mkdir(parents=True, exist_ok=True)
+    return folder_name
+
 def analyze_functions(db_path):
     """Find and analyze functions matching a pattern."""
     ida_options = IdaCommandOptions(auto_analysis=True, new_database=True)
     with ida_domain.Database.open(db_path, ida_options, False) as db:
 
+        folder = create_folder(db_path)
         function_count = 0
         for _ in db.functions:
             function_count += 1
@@ -28,7 +37,7 @@ def analyze_functions(db_path):
                 print(f'Signature: {signature}')
                 pseudo = db.functions.get_pseudocode(func)
                 safe_name = sanitize_filename(name)
-                file_path = os.path.join("dump", f"{safe_name}.c")
+                file_path = os.path.join(folder, f"{safe_name}.c")
                 with open(file_path, "w") as f:
                     for line in pseudo:
                         f.write(line + "\n")
