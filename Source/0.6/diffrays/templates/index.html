@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="meta">Functions categorized by modification level (most significant first)</div>
+
+{% for level in ['significant', 'moderate', 'minor', 'major', 'unchanged', 'added', 'removed'] %}
+  {% if categories[level] %}
+  <div class="category category-{{ level }}">
+      <div class="category-header">
+          <span class="category-title">{{ level|title }} Changes</span>
+          <span class="category-count">{{ categories[level]|length }}</span>
+      </div>
+      <div class="list">
+      {% for func in categories[level] %}
+          <div class="item">
+              <a href="{{ url_for('function_view', name=func.name) }}">{{ func.name }}</a>
+              {% if func.modification_score > 0 %}
+              <div class="score">Modification score: {{ "%.3f"|format(func.modification_score) }}</div>
+              {% endif %}
+          </div>
+      {% endfor %}
+      </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% if not categories.values()|select|list %}
+<div class="empty">No functions found in the database.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>diffrays server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { 
+      font-family: 'Fira Code', Menlo, Monaco, Consolas, monospace; 
+      margin: 0; 
+      background: #282a36;
+      color: #f8f8f2;
+    }
+    header { 
+      padding: 16px 20px; 
+      background: #44475a; 
+      color: #f8f8f2; 
+      border-bottom: 2px solid #6272a4;
+    }
+    main { padding: 20px; }
+    a { 
+      text-decoration: none; 
+      color: #8be9fd;
+    }
+    a:hover { color: #50fa7b; }
+    
+    .category { 
+      margin-bottom: 24px; 
+      border: 2px solid; 
+      border-radius: 8px; 
+      padding: 16px; 
+      background: #44475a;
+    }
+    .category-header { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      margin-bottom: 16px; 
+    }
+    .category-title { 
+      font-weight: bold; 
+      font-size: 18px; 
+      color: #f8f8f2;
+    }
+    .category-count { 
+      background: #6272a4; 
+      color: #f8f8f2; 
+      padding: 6px 12px; 
+      border-radius: 16px; 
+      font-size: 14px; 
+      font-weight: bold;
+    }
+    .list { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); 
+      gap: 12px; 
+    }
+    .item { 
+      padding: 12px; 
+      border: 1px solid #6272a4; 
+      border-radius: 8px; 
+      background: #383a59;
+      transition: all 0.2s ease;
+    }
+    .item:hover { 
+      background: #44475a; 
+      border-color: #8be9fd;
+      transform: translateY(-2px);
+    }
+    .score { 
+      font-size: 12px; 
+      color: #bd93f9; 
+      margin-top: 6px; 
+    }
+    .meta { 
+      color: #6272a4; 
+      font-size: 14px; 
+      margin-bottom: 20px;
+    }
+    .empty { 
+      color: #6272a4; 
+      padding: 40px; 
+      text-align: center; 
+      font-style: italic;
+    }
+    
+    /* Category colors */
+    .category-significant { border-color: #ff5555; }
+    .category-moderate { border-color: #ffb86c; }
+    .category-minor { border-color: #f1fa8c; }
+    .category-major { border-color: #ff79c6; }
+    .category-unchanged { border-color: #50fa7b; }
+    .category-added { border-color: #8be9fd; }
+    .category-removed { border-color: #6272a4; }
+  </style>
+</head>
+<body>
+<header>
+  <strong>diffrays</strong> — {{ subtitle }}
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

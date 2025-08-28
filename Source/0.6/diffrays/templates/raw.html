@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin: 20px;">
+  <a href="{{ url_for('function_view', name=name) }}" style="display: inline-block; padding: 10px 16px; background: #6272a4; color: #f8f8f2; border-radius: 6px; margin-bottom: 20px;">← Back to diff</a>
+  
+  <div style="background: #44475a; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+    <strong>{{ name }}</strong> — {{ version|upper }} version
+  </div>
+  
+  {% if text %}
+  <pre style="background: #44475a; padding: 20px; border-radius: 8px; overflow-x: auto; color: #f8f8f2; border: 1px solid #6272a4;">{{ text }}</pre>
+  {% else %}
+  <div class="empty">No content available for {{ version|upper }} version</div>
+  {% endif %}
+</div>
+{% endblock %}
