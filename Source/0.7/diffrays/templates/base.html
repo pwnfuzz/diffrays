@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>diffrays server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #282a36;
+      --bg-elev: #383a59;
+      --fg: #f8f8f2;
+      --muted: #6272a4;
+      --accent: #8be9fd;
+      --accent-2: #50fa7b;
+      --border: #6272a4;
+      --chip: #44475a;
+      --link: #8be9fd;
+      --link-hover: #50fa7b;
+    }
+    [data-theme="light"] {
+      --bg: #f8f9fa;
+      --bg-elev: #ffffff;
+      --fg: #212529;
+      --muted: #6c757d;
+      --accent: #0d6efd;
+      --accent-2: #198754;
+      --border: #dee2e6;
+      --chip: #e9ecef;
+      --link: #0d6efd;
+      --link-hover: #198754;
+    }
+    body {
+      font-family: 'Fira Code', Menlo, Monaco, Consolas, monospace;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 12px 16px;
+      background: var(--chip);
+      color: var(--fg);
+      border-bottom: 2px solid var(--muted);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .nav a {
+      color: var(--link);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .nav a.active {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+    }
+    .nav a:hover { color: var(--link-hover); }
+    .right-controls { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.secondary { background: var(--chip); color: var(--fg); border: 1px solid var(--border); }
+    main { padding: 20px; }
+    a { text-decoration: none; color: var(--link); }
+    a:hover { color: var(--link-hover); }
+    .meta { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+    .empty { color: var(--muted); padding: 40px; text-align: center; font-style: italic; }
+    .list-table { width: 100%; border-collapse: collapse; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .list-table th, .list-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    .list-table th { background: var(--chip); font-weight: 700; }
+    .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .input { background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; }
+    .sort-btn { cursor: pointer; user-select: none; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <strong>diffrays</strong>
+    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="{{ url_for('diffs_page') }}" class="{% if request.endpoint == 'diffs_page' %}active{% endif %}">Diffing Result</a>
+    <a href="{{ url_for('unchanged_page') }}" class="{% if request.endpoint == 'unchanged_page' %}active{% endif %}">Unchanged</a>
+    <a href="{{ url_for('unmatched_page') }}" class="{% if request.endpoint == 'unmatched_page' %}active{% endif %}">Unmatched</a>
+  </div>
+  <div class="right-controls">
+    <button id="themeToggle" class="btn" aria-label="Toggle theme">🌙</button>
+  </div>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<script>
+  (function(){
+    const key = 'diffrays-theme';
+    const saved = localStorage.getItem(key);
+    if (saved === 'light') document.documentElement.setAttribute('data-theme','light');
+    document.getElementById('themeToggle').addEventListener('click', function(){
+      const light = document.documentElement.getAttribute('data-theme') === 'light';
+      document.documentElement.setAttribute('data-theme', light ? 'dark' : 'light');
+      localStorage.setItem(key, light ? 'dark' : 'light');
+      this.textContent = (!light) ? '🌙' : '☀️';
+    });
+    // initialize icon
+    const btn = document.getElementById('themeToggle');
+    btn.textContent = (document.documentElement.getAttribute('data-theme') === 'light') ? '☀️' : '🌙';
+  })();
+</script>
+</body>
+</html>

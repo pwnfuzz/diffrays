@@ -43,32 +43,62 @@
 
 **Added Features:**  
 - ✅ Created a Pseudocode extractor using IDA Domain API.
-- ⬜ Store all the result in Sqlite3 DB?
+- ✅ Store all the result in Sqlite3 DB?
 
 ---
 
 ### 0.6 - Zeta 
 
-**To Do:**  
-- ⬜ Create parser for SQLITE3 database and perform diff between two binaries's functions using difflib and store the result as HTML.  
-- ⬜ Decide final result format: HTML with CSS vs MD.  
-- ⬜ Maybe create a full-fledged local HTML application to view results instead of Flask-based app.  
+**Added Features:** 
+- ✅ Create parser for SQLITE3 database and perform diff between two binaries's functions using difflib and store the result as HTML.  
+- ✅ Decide final result format: HTML with CSS vs MD.  
+- ~~Maybe create a full-fledged local HTML application to view results instead of Flask-based app.~~
+- ✅ Created a Flask based server to view the result.
 
 ---
 
 ### 0.7 - Eta 
 
-**To Do:**  
-- ⬜ Make a new web application with better visualization to view all data.  
-- ⬜ Implement % of code changed.  
-- ⬜ Similar to Bindiff visuals: ![example](https://insinuator.net/wp-content/uploads/2013/07/diff-result.png)  
-- ⬜ Implement search feature to search for functions.  
+**Added Features:** 
+- ✅ Make a new web application with better visualization to view all data.  
+- ✅ Implement % of code changed.  
+- ✅ Similar to Bindiff visuals: ![example](https://insinuator.net/wp-content/uploads/2013/07/diff-result.png)  
+- ✅ Implement search feature to search for functions.  
 
 ---
 
 ### 0.8 - Theta
 
-**To Do:**  
-- ⬜ Make IDA headless plugin script which takes 2 binaries as input and creates final output instead of SQLite3.  
+**Added Features:** 
+- ✅ Make IDA headless plugin script which takes 2 binaries as input and creates final output as SQLite3.  
+- ⬜ Make the application portal, that means make the server feature of the application works without IDA.
+- ⬜ Add `--debug` then only display the logs.
+- ⬜ Add a proper progress bar and better visual output for python.
+- ⬜ Add `--log` to store the log results in a file, dont ask for name use `log_<old_file>_<new_file>.txt`.
+- ⬜ Make a better `--help` output.
+- ⬜ Add project banner to the python script.
+- ⬜ Dont store it as output.sqlite instead `result_<old_file>_<new_file>_<timestamp>.sqlite`
+
+---
+
+### 0.9 - Iota
+
+**Added Features:** 
 - ⬜ Ensure headless downloads symbols from servers.  
 - ⬜ Create a logo for the project.  
+- ⬜ Add basic information about the binary to the dashboard like base address, md5 hash, format, module, etc.. 
+- ⬜ Store more information about the functions in the database and show them in webpage too like: Address, Signature.
+
+---
+
+### 1.0 - Kappa
+
+**To Do:**  
+- ⬜ LIVE
+
+---
+
+## Things to Fix
+
+- The Diffing highlights are not proper.
+- If the main site is light mode then diff should follow the same.

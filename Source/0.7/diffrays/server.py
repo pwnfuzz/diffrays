@@ -1,0 +1,704 @@
+from __future__ import annotations
+
+import sqlite3
+import zlib
+import difflib
+import re
+from pathlib import Path
+from typing import Optional, Tuple, List, Dict, Any
+from dataclasses import dataclass
+import os
+
+from flask import Flask, g, render_template, request, abort, url_for, redirect
+from .log import get_logger
+
+
+# -----------------------------
+# Data classes
+# -----------------------------
+@dataclass
+class FunctionInfo:
+    name: str
+    old_text: Optional[str]
+    new_text: Optional[str]
+    modification_score: float = 0.0
+    modification_level: str = "unchanged"
+
+    def compute_modification_score(self) -> float:
+        """Compute a modification score between 0.0 (unchanged) and 1.0 (completely different)"""
+        if not self.old_text or not self.new_text:
+            return 1.0  # Missing one version means completely changed
+        
+        if self.old_text == self.new_text:
+            return 0.0
+        
+        # Use difflib to compute similarity
+        matcher = difflib.SequenceMatcher(None, self.old_text, self.new_text)
+        similarity = matcher.ratio()
+        return 1.0 - similarity
+
+    def determine_modification_level(self) -> str:
+        """Categorize the modification level based on score"""
+        score = self.compute_modification_score()
+        self.modification_score = score
+        
+        if score == 0.0:
+            return "unchanged"
+        elif score < 0.1:
+            return "minor"
+        elif score < 0.3:
+            return "moderate"
+        elif score < 0.6:
+            return "significant"
+        else:
+            return "major"
+
+
+# -----------------------------
+# App factory & DB helpers
+# -----------------------------
+
+def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.0.1", port: int = 5050):
+    """
+    Create a Flask app that serves function lists and HTML diffs from a diffrays SQLite DB.
+    """
+    app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+    app.config["DB_PATH"] = str(Path(db_path).resolve())
+    app.config["HOST"] = host
+    app.config["PORT"] = port
+
+    logger_name = f"diffrays.server[{Path(db_path).name}]"
+    app.logger_obj = get_logger(logger_name, log_file=log_file)
+
+    @app.before_request
+    def _log_request():
+        app.logger_obj.info("HTTP %s %s", request.method, request.path)
+
+    def get_conn() -> sqlite3.Connection:
+        if "db_conn" not in g:
+            path = app.config["DB_PATH"]
+            if not Path(path).exists():
+                app.logger_obj.error("DB not found at %s", path)
+                abort(500, description=f"DB not found at {path}")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            g.db_conn = conn
+            app.logger_obj.debug("Opened SQLite connection to %s", path)
+        return g.db_conn
+
+    @app.teardown_appcontext
+    def close_conn(exc):
+        conn = g.pop("db_conn", None)
+        if conn is not None:
+            conn.close()
+            app.logger_obj.debug("Closed SQLite connection")
+
+    # -----------------------------
+    # Schema detection
+    # -----------------------------
+    def detect_schema(conn: sqlite3.Connection) -> Dict[str, bool]:
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(functions)").fetchall()]
+        schema = {
+            "has_wide": all(c in cols for c in ["function_name", "old_pseudocode", "new_pseudocode"]),
+            "has_tall": all(c in cols for c in ["function_name", "binary_version", "pseudocode"]),
+        }
+        if not schema["has_wide"] and not schema["has_tall"]:
+            app.logger_obj.error("Unsupported schema for table 'functions'. Columns: %s", cols)
+        else:
+            app.logger_obj.info("Detected schema: %s", "wide" if schema["has_wide"] else "tall")
+        return schema
+
+    def decompress(blob: Optional[bytes]) -> Optional[str]:
+        if blob is None:
+            return None
+        try:
+            return zlib.decompress(blob).decode("utf-8", errors="replace")
+        except Exception as e:
+            app.logger_obj.exception("Failed to decompress blob: %s", e)
+            return None
+
+    # -----------------------------
+    # Data access with modification scoring
+    # -----------------------------
+    def get_all_functions_with_scores(conn: sqlite3.Connection) -> Dict[str, List[FunctionInfo]]:
+        """Get all functions categorized by modification level"""
+        functions_by_level = {
+            "significant": [],
+            "moderate": [],
+            "minor": [],
+            "major": [],
+            "unchanged": [],
+            "added": [],
+            "removed": []
+        }
+
+        # For tall schema: get all function names and their versions
+        rows = conn.execute("SELECT function_name, binary_version, pseudocode FROM functions").fetchall()
+        
+        # Build a dictionary of function_name -> (old_text, new_text)
+        func_dict = {}
+        for row in rows:
+            func_name = row["function_name"]
+            version = row["binary_version"]
+            pseudocode = decompress(row["pseudocode"])
+            
+            if func_name not in func_dict:
+                func_dict[func_name] = {"old": None, "new": None}
+            
+            if version == "old":
+                func_dict[func_name]["old"] = pseudocode
+            elif version == "new":
+                func_dict[func_name]["new"] = pseudocode
+        
+        for func_name, versions in func_dict.items():
+            func_info = FunctionInfo(func_name, versions["old"], versions["new"])
+            level = func_info.determine_modification_level()
+            
+            # Special cases for added/removed functions
+            if versions["old"] is None and versions["new"] is not None:
+                functions_by_level["added"].append(func_info)
+            elif versions["old"] is not None and versions["new"] is None:
+                functions_by_level["removed"].append(func_info)
+            else:
+                functions_by_level[level].append(func_info)
+
+        return functions_by_level
+
+    def fetch_function_pair(conn: sqlite3.Connection, func_name: str) -> Tuple[Optional[str], Optional[str]]:
+        """Returns (old_text, new_text) for a specific function"""
+        # For tall schema, fetch both versions separately
+        # Now we can safely use fetchone() since duplicates are prevented by UNIQUE constraint
+        old_row = conn.execute(
+            "SELECT pseudocode FROM functions WHERE function_name = ? AND binary_version = 'old'",
+            (func_name,),
+        ).fetchone()
+        
+        new_row = conn.execute(
+            "SELECT pseudocode FROM functions WHERE function_name = ? AND binary_version = 'new'",
+            (func_name,),
+        ).fetchone()
+        
+        # Log for debugging
+        app.logger_obj.debug(f"Function {func_name}: old={old_row is not None}, new={new_row is not None}")
+        
+        old_text = decompress(old_row["pseudocode"]) if old_row else None
+        new_text = decompress(new_row["pseudocode"]) if new_row else None
+        
+        return old_text, new_text
+
+
+    def make_dracula_diff_html(file1_text, file2_text, file1_name="OLD", file2_name="NEW"):
+        """Generate Dracula-themed diff HTML"""
+        a = file1_text.splitlines(keepends=True) if file1_text else []
+        b = file2_text.splitlines(keepends=True) if file2_text else []
+
+        # Generate table only
+        table = difflib.HtmlDiff().make_table(a, b, fromdesc=file1_name, todesc=file2_name)
+
+        # Strip anchors
+        table = re.sub(r"</?a\b[^>]*>", "", table, flags=re.I)
+
+        # Remove nav col
+        table = re.sub(r"<th[^>]*\bclass=['\"]?diff_next['\"]?[^>]*>.*?</th>", "", table, flags=re.I|re.S)
+        table = re.sub(r"<td[^>]*\bclass=['\"]?diff_next['\"]?[^>]*>.*?</td>", "", table, flags=re.I|re.S)
+
+        # Dracula theme HTML
+        html = f"""
+        <!doctype html>
+        <html lang="en">
+           <head>
+              <meta charset="utf-8" />
+              <title>Diff Output (Dracula)</title>
+              <style>
+                 body {{
+                 margin:20px;
+                 background:#282a36;
+                 color:#f8f8f2;
+                 font-family: 'Fira Code', Menlo, Consolas, monospace;
+                 transition:.2s;
+                 }}
+                 
+                 .header-container {{
+                 display: flex;
+                 justify-content: space-between;
+                 align-items: center;
+                 margin-bottom: 32px;
+                 }}
+                 
+                 .controls {{
+                 display: flex;
+                 gap: 10px;
+                 align-items: center;
+                 }}
+                 
+                 .checkbox-container {{
+                 display: flex;
+                 align-items: center;
+                 gap: 5px;
+                 background: rgba(68, 71, 90, 0.9);
+                 padding: 6px 10px;
+                 border-radius: 6px;
+                 color: #f8f8f2;
+                 font-size: 14px;
+                 }}
+                 
+                 #char-level-toggle {{
+                 margin: 0;
+                 }}
+                 
+                 table.diff {{
+                 width:100%;
+                 border-collapse:collapse;
+                 border:1px solid #44475a;
+                 font-size:14px;
+                 box-shadow:0 2px 6px rgba(0,0,0,.4);
+                 }}
+                 .diff th {{
+                 background:#44475a;
+                 color:#f8f8f2;
+                 padding:8px;
+                 position:sticky;
+                 top:0;
+                 z-index:10;
+                 }}
+                 .diff td {{
+                 padding:6px 10px;
+                 vertical-align:top;
+                 white-space:pre-wrap;
+                 font-family: 'Fira Code', monospace;
+                 }}
+                 .diff .diff_header {{
+                 background:#6272a4;
+                 color:#f8f8f2;
+                 font-weight:bold;
+                 text-align:center;
+                 }}
+                 
+                 /* Full line highlighting for additions (green) */
+                 .diff tr.diff_add td,
+                 .diff .diff_add {{
+                 background:#244032 !important;
+                 color:#50fa7b !important;
+                 }}
+                 
+                 /* Full line highlighting for changes (orange) - controlled by checkbox */
+                 .diff tr.diff_chg td,
+                 .diff .diff_chg {{
+                 background:#4b3d1f !important;
+                 color:#ffb86c !important;
+                 }}
+                 
+                 /* Hide character-level highlighting when checkbox is unchecked */
+                 body.hide-char-level .diff tr.diff_chg td,
+                 body.hide-char-level .diff .diff_chg {{
+                 background: transparent !important;
+                 color: inherit !important;
+                 }}
+                 
+                 /* Full line highlighting for deletions (red) */
+                 .diff tr.diff_sub td,
+                 .diff .diff_sub {{
+                 background:#4a2c32 !important;
+                 color:#ff5555 !important;
+                 }}
+                 
+                 /* Override any inline span highlighting within diff lines */
+                 .diff_add span,
+                 .diff_chg span,
+                 .diff_sub span {{
+                 background:inherit !important;
+                 color:inherit !important;
+                 }}
+                 
+                 /* Regular hover for non-addition lines */
+                 .diff tr:not(.diff_add):hover td {{
+                 background:#383a59 !important;
+                 }}
+                 
+                 /* NO hover effect for addition lines - keep them green */
+                 .diff tr.diff_add:hover td {{
+                 background:#244032 !important;
+                 color:#50fa7b !important;
+                 }}
+                 
+                 /* Specific override for cells with diff_add content */
+                 .diff td:has(span.diff_add):hover,
+                 .diff td.diff_add:hover {{
+                 background:#244032 !important;
+                 color:#50fa7b !important;
+                 }}
+                 
+                 .diff_next {{ display:none !important; }}
+                 
+                 /* Light mode styles */
+                 body.light {{
+                 background:#f8f9fa !important;
+                 color:#212529 !important;
+                 }}
+                 body.light table.diff {{
+                 border:1px solid #dee2e6;
+                 }}
+                 body.light .diff th {{
+                 background:#e9ecef;
+                 color:#495057;
+                 position:sticky;
+                 top:0;
+                 z-index:10;
+                 }}
+                 body.light .diff .diff_header {{
+                 background:#6c757d;
+                 color:#fff;
+                 }}
+                 
+                 body.light .checkbox-container {{
+                 background: rgba(233, 236, 239, 0.9);
+                 color: #495057;
+                 }}
+                 
+                 /* Full line highlighting for light mode */
+                 body.light .diff tr.diff_add td,
+                 body.light .diff .diff_add {{
+                 background:#d4edda !important;
+                 color:#155724 !important;
+                 }}
+                 body.light .diff tr.diff_chg td,
+                 body.light .diff .diff_chg {{
+                 background:#fff3cd !important;
+                 color:#856404 !important;
+                 }}
+                 body.light .diff tr.diff_sub td,
+                 body.light .diff .diff_sub {{
+                 background:#f8d7da !important;
+                 color:#721c24 !important;
+                 }}
+                 
+                 /* Light mode: Hide character-level highlighting when checkbox is unchecked */
+                 body.light.hide-char-level .diff tr.diff_chg td,
+                 body.light.hide-char-level .diff .diff_chg {{
+                 background: transparent !important;
+                 color: inherit !important;
+                 }}
+                 
+                 /* Light mode hover effects */
+                 body.light .diff tr:not(.diff_add):hover td {{
+                 background:#e2e6ea !important;
+                 }}
+                 
+                 /* Light mode: NO hover effect for addition lines - keep them green */
+                 body.light .diff tr.diff_add:hover td {{
+                 background:#d4edda !important;
+                 color:#155724 !important;
+                 }}
+                 
+                 /* Light mode: Specific override for cells with diff_add content */
+                 body.light .diff td:has(span.diff_add):hover,
+                 body.light .diff td.diff_add:hover {{
+                 background:#d4edda !important;
+                 color:#155724 !important;
+                 }}
+                 
+                 #toggle-dark {{
+                 padding:6px 12px; border:0; border-radius:6px;
+                 background:#bd93f9; color:#282a36;
+                 cursor:pointer; font-size:14px; font-weight:bold;
+                 }}
+                 #toggle-dark:hover {{
+                 background:#ff79c6; color:#f8f8f2;
+                 }}
+                 body.light #toggle-dark {{
+                 background:#007bff; color:#fff;
+                 }}
+                 body.light #toggle-dark:hover {{
+                 background:#0056b3; color:#fff;
+                 }}
+              </style>
+           </head>
+           <body>
+              <div class="header-container">
+                 <div style="display:flex; gap:12px; align-items:center;">
+                    <button onclick="goBack()" id="backBtn" style="padding:6px 10px;border:0;border-radius:6px;background:#6272a4;color:#f8f8f2;cursor:pointer;">← Back</button>
+                    <h2 style="margin:0;">Diff between <code>{file1_name}</code> and <code>{file2_name}</code></h2>
+                 </div>
+                 <div class="controls">
+                    <div class="checkbox-container">
+                       <input type="checkbox" id="char-level-toggle" checked>
+                       <label for="char-level-toggle">Character Level Highlight</label>
+                    </div>
+                    <button id="toggle-dark">🌙 Toggle Light Mode</button>
+                 </div>
+              </div>
+              {table}
+              <script>
+                 // Initialize theme from localStorage
+                 (function(){{
+                     try {{
+                         const saved = localStorage.getItem('diffrays-theme');
+                         if (saved === 'light') {{ document.body.classList.add('light'); }}
+                     }} catch(e) {{}}
+                 }})();
+
+                 // Back button helper
+                 function goBack(){{
+                     if (history.length > 1) {{ history.back(); return; }}
+                     try {{
+                         const ref = document.referrer || '';
+                         if (ref.includes('/diffs')) location.href = '/diffs';
+                         else if (ref.includes('/unchanged')) location.href = '/unchanged';
+                         else if (ref.includes('/unmatched')) location.href = '/unmatched';
+                         else location.href = '/';
+                     }} catch(e) {{ location.href = '/'; }}
+                 }}
+
+                 const btn = document.getElementById('toggle-dark');
+                 const charLevelToggle = document.getElementById('char-level-toggle');
+                 let light = false;
+                 
+                 // Dark/Light mode toggle
+                 btn.addEventListener('click', () => {{
+                     document.body.classList.toggle('light');
+                     light = !light;
+                     if(light){{
+                       btn.textContent="🌙 Toggle Dark Mode";
+                     }} else {{
+                       btn.textContent="🌙 Toggle Light Mode";
+                     }}
+                     try {{ localStorage.setItem('diffrays-theme', light ? 'light' : 'dark'); }} catch(e) {{}}
+                     // Update addition colors when theme changes
+                     updateAdditionColors();
+                 }});
+                 
+                 // Character level highlighting toggle
+                 charLevelToggle.addEventListener('change', () => {{
+                     if (charLevelToggle.checked) {{
+                         document.body.classList.remove('hide-char-level');
+                     }} else {{
+                         document.body.classList.add('hide-char-level');
+                     }}
+                 }});
+                 
+                 // Add full-line highlighting and hover protection
+                 function addFullLineClasses() {{
+                     const diffTable = document.querySelector('table.diff');
+                     if (diffTable) {{
+                         const tds = diffTable.querySelectorAll('td');
+                         tds.forEach(td => {{
+                             // Highlight full lines for additions (green)
+                             if (td.querySelector('span.diff_add')) {{
+                                 td.style.backgroundColor = '#244032';
+                                 td.style.color = '#50fa7b';
+                                 td.classList.add('diff_add');
+                                 
+                                 // Add specific hover protection
+                                 td.addEventListener('mouseenter', function() {{
+                                     if (document.body.classList.contains('light')) {{
+                                         this.style.backgroundColor = '#d4edda';
+                                         this.style.color = '#155724';
+                                     }} else {{
+                                         this.style.backgroundColor = '#244032';
+                                         this.style.color = '#50fa7b';
+                                     }}
+                                 }});
+                                 
+                                 td.addEventListener('mouseleave', function() {{
+                                     if (document.body.classList.contains('light')) {{
+                                         this.style.backgroundColor = '#d4edda';
+                                         this.style.color = '#155724';
+                                     }} else {{
+                                         this.style.backgroundColor = '#244032';
+                                         this.style.color = '#50fa7b';
+                                     }}
+                                 }});
+                             }}
+                         }});
+                     }}
+                 }}
+                 
+                 // Update colors when theme changes
+                 function updateAdditionColors() {{
+                     const additionCells = document.querySelectorAll('td.diff_add');
+                     additionCells.forEach(td => {{
+                         if (document.body.classList.contains('light')) {{
+                             td.style.backgroundColor = '#d4edda';
+                             td.style.color = '#155724';
+                         }} else {{
+                             td.style.backgroundColor = '#244032';
+                             td.style.color = '#50fa7b';
+                         }}
+                     }});
+                 }}
+                 
+                 // Run immediately
+                 addFullLineClasses();
+                 
+                 // Also run when DOM is ready
+                 document.addEventListener('DOMContentLoaded', addFullLineClasses);
+              </script>
+           </body>
+        </html>
+        """
+        return html
+
+    # -----------------------------
+    # Routes
+    # -----------------------------
+
+    @app.route("/")
+    def dashboard():
+        conn = get_conn()
+        try:
+            categories = get_all_functions_with_scores(conn)
+        except Exception as e:
+            app.logger_obj.exception("Failed to categorize functions: %s", e)
+            abort(500, description="Failed to categorize functions")
+
+        total = sum(len(v) for v in categories.values())
+        changed = sum(len(v) for k, v in categories.items() if k in ["minor", "moderate", "significant", "major"])
+        unchanged = len(categories["unchanged"]) if "unchanged" in categories else 0
+        unmatched = len(categories["added"]) + len(categories["removed"]) if "added" in categories and "removed" in categories else 0
+
+        counts = {
+            # Treat everything above moderate threshold as significant (merge previous 'major')
+            "significant": len(categories.get("significant", [])) + len(categories.get("major", [])),
+            "moderate": len(categories.get("moderate", [])),
+            "minor": len(categories.get("minor", [])),
+            "unchanged": unchanged,
+            "unmatched": unmatched,
+            "total": total,
+            "changed": changed,
+        }
+
+        return render_template(
+            "dashboard.html",
+            subtitle=f"Dashboard — {Path(app.config['DB_PATH']).name}",
+            stats={
+                "total": total,
+                "changed": changed,
+                "unchanged": unchanged,
+                "unmatched": unmatched
+            },
+            counts=counts
+        )
+
+    @app.route("/diffs")
+    def diffs_page():
+        conn = get_conn()
+        categories = get_all_functions_with_scores(conn)
+        # Exclude added/removed and unchanged here as per request
+        levels = ["significant", "moderate", "minor", "major"]
+        filter_level = (request.args.get("level") or "").lower()
+        if filter_level in levels:
+            if filter_level == "significant":
+                # Include both 'significant' and 'major' under significant
+                levels = ["significant", "major"]
+            else:
+                levels = [filter_level]
+        items = []
+        for lvl in levels:
+            for f in categories.get(lvl, []):
+                items.append({"name": f.name, "score": f.modification_score})
+        return render_template(
+            "list.html",
+            title=(f"Diffing Result — {levels[0].title()}" if filter_level else "Diffing Result"),
+            items=items,
+            show_score=True,
+            show_version=False,
+            open_raw=False,
+            current_tab='diffs'
+        )
+
+    @app.route("/unchanged")
+    def unchanged_page():
+        conn = get_conn()
+        categories = get_all_functions_with_scores(conn)
+        items = [{"name": f.name, "version": "old"} for f in categories.get("unchanged", [])]
+        return render_template(
+            "list.html",
+            title="Unchanged",
+            items=items,
+            show_score=False,
+            show_version=False,
+            open_raw=True,
+            current_tab='unchanged'
+        )
+
+    @app.route("/unmatched")
+    def unmatched_page():
+        conn = get_conn()
+        categories = get_all_functions_with_scores(conn)
+        items = []
+        items.extend({"name": f.name, "version": "new"} for f in categories.get("added", []))
+        items.extend({"name": f.name, "version": "old"} for f in categories.get("removed", []))
+        return render_template(
+            "list.html",
+            title="Unmatched",
+            items=list(items),
+            show_score=False,
+            show_version=True,
+            open_raw=True,
+            current_tab='unmatched'
+        )
+
+    @app.route("/function/<path:name>")
+    def function_view(name: str):
+        conn = get_conn()
+        old_text, new_text = fetch_function_pair(conn, name)
+        has_old = bool(old_text)
+        has_new = bool(new_text)
+
+        app.logger_obj.info(f"Function {name}: has_old={has_old}, has_new={has_new}")
+        
+        # DEBUG: Check if content is actually different
+        if has_old and has_new:
+            if old_text == new_text:
+                app.logger_obj.warning(f"Function {name}: OLD and NEW content are IDENTICAL!")
+            else:
+                app.logger_obj.info(f"Function {name}: Content differs, diff should show changes")
+        
+        if not has_old and not has_new:
+            return render_template("diff.html", name=name, has_old=False, has_new=False)
+
+        # Generate Dracula-themed diff
+        diff_html = make_dracula_diff_html(old_text or "", new_text or "", "OLD_VERSION", "NEW_VERSION")
+        return diff_html
+    
+    @app.route("/debug/functions")
+    def debug_functions():
+        conn = get_conn()
+        functions = conn.execute(
+            "SELECT function_name, binary_version, LENGTH(pseudocode) as size FROM functions ORDER BY function_name, binary_version"
+        ).fetchall()
+        
+        result = "<h1>Database Contents</h1><table border='1'><tr><th>Function Name</th><th>Version</th><th>Size</th></tr>"
+        for row in functions:
+            result += f"<tr><td>{row['function_name']}</td><td>{row['binary_version']}</td><td>{row['size']}</td></tr>"
+        result += "</table>"
+        return result
+
+    @app.route("/raw/<path:name>")
+    def raw_view(name: str):
+        version = (request.args.get("version") or "").lower()
+        if version not in {"old", "new"}:
+            return redirect(url_for("function_view", name=name))
+        conn = get_conn()
+        old_text, new_text = fetch_function_pair(conn, name)
+        text = old_text if version == "old" else new_text
+        
+        return render_template(
+            "raw.html",
+            name=name,
+            version=version,
+            text=text or f"No content available for {version.upper()} version"
+        )
+
+    return app
+
+
+def run_server(db_path: str, log_file: Optional[str] = None):
+    """
+    Convenience runner used by CLI.
+    """
+    host = "127.0.0.1"
+    port = 5555
+    app = create_app(db_path=db_path, host="127.0.0.1", port=5555)
+    app.logger_obj.info("Starting Flask on http://%s:%d (DB: %s)", host, port, db_path)
+    app.run(host=host, port=port, debug=False)

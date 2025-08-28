@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h3 style="margin: 0 0 8px 0;">{{ title }}</h3>
+<table class="list-table" id="listTable">
+  <thead>
+    <tr>
+      <th style="width:70%;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="sort-btn" onclick="sortByName()">Function ⬍</span>
+          <input id="searchInput" class="input" type="text" placeholder="Search…" oninput="filterRows()" />
+        </div>
+      </th>
+      {% if show_score %}
+      <th style="cursor:pointer;" onclick="toggleScoreSort()" id="scoreHeader">Score ↓</th>
+      {% endif %}
+      {% if show_version %}
+      <th>Version</th>
+      {% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+    <tr>
+      <td>
+        {% if open_raw %}
+        <a href="{{ url_for('raw_view', name=it.name) }}?version={{ it.version }}{% if current_tab %}&from={{ current_tab }}{% endif %}">{{ it.name }}</a>
+        {% else %}
+        <a href="{{ url_for('function_view', name=it.name) }}">{{ it.name }}</a>
+        {% endif %}
+      </td>
+      {% if show_score %}
+      <td data-score="{{ '%.6f'|format(it.score) }}">{{ '%.3f'|format(it.score) }}</td>
+      {% endif %}
+      {% if show_version %}
+      <td>{{ it.version }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% if not items %}
+  <tbody><tr><td {% if show_score or show_version %}colspan="2"{% else %}colspan="1"{% endif %} class="empty">No items.</td></tr></tbody>
+  {% endif %}
+  </table>
+
+<script>
+  let scoreAsc = false;
+  function filterRows(){
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('#listTable tbody tr');
+    rows.forEach(r => {
+      const name = r.children[0].innerText.toLowerCase();
+      r.style.display = name.includes(q) ? '' : 'none';
+    });
+  }
+  function toggleScoreSort(){
+    scoreAsc = !scoreAsc;
+    const header = document.getElementById('scoreHeader');
+    header.textContent = 'Score ' + (scoreAsc ? '↑' : '↓');
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a,b)=>{
+      const sa = parseFloat(a.children[1].getAttribute('data-score')) || 0;
+      const sb = parseFloat(b.children[1].getAttribute('data-score')) || 0;
+      return scoreAsc ? sa - sb : sb - sa;
+    });
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+  function sortByName(){
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a,b)=> a.children[0].innerText.localeCompare(b.children[0].innerText));
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+</script>
+{% endblock %}
+
+
