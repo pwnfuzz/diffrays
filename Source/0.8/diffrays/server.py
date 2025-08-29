@@ -133,22 +133,31 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         }
 
         # For tall schema: get all function names and their versions
-        rows = conn.execute("SELECT function_name, binary_version, pseudocode FROM functions").fetchall()
+        rows = conn.execute("SELECT function_name, binary_version, pseudocode, address, blocks, signature FROM functions").fetchall()
         
         # Build a dictionary of function_name -> (old_text, new_text)
-        func_dict = {}
+        func_dict: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             func_name = row["function_name"]
             version = row["binary_version"]
             pseudocode = decompress(row["pseudocode"])
+            address = row["address"]
+            blocks = row["blocks"]
+            signature = row["signature"]
             
             if func_name not in func_dict:
-                func_dict[func_name] = {"old": None, "new": None}
+                func_dict[func_name] = {
+                    "old": None, "new": None,
+                    "old_meta": {"address": None, "blocks": None, "signature": None},
+                    "new_meta": {"address": None, "blocks": None, "signature": None},
+                }
             
             if version == "old":
                 func_dict[func_name]["old"] = pseudocode
+                func_dict[func_name]["old_meta"] = {"address": address, "blocks": blocks, "signature": signature}
             elif version == "new":
                 func_dict[func_name]["new"] = pseudocode
+                func_dict[func_name]["new_meta"] = {"address": address, "blocks": blocks, "signature": signature}
         
         for func_name, versions in func_dict.items():
             func_info = FunctionInfo(func_name, versions["old"], versions["new"])
@@ -162,6 +171,12 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             else:
                 functions_by_level[level].append(func_info)
 
+        # Attach meta where needed for list renderers
+        for level, lst in functions_by_level.items():
+            for f in lst:
+                meta = func_dict.get(f.name, {})
+                f.old_meta = meta.get("old_meta") if isinstance(meta, dict) else None
+                f.new_meta = meta.get("new_meta") if isinstance(meta, dict) else None
         return functions_by_level
 
     def fetch_binary_metadata(conn: sqlite3.Connection) -> Dict[str, Any]:
@@ -621,7 +636,15 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         items = []
         for lvl in levels:
             for f in categories.get(lvl, []):
-                items.append({"name": f.name, "score": f.modification_score})
+                items.append({
+                    "name": f.name,
+                    "score": f.modification_score,
+                    "old_addr": (f.old_meta or {}).get("address"),
+                    "new_addr": (f.new_meta or {}).get("address"),
+                    "old_blocks": (f.old_meta or {}).get("blocks"),
+                    "new_blocks": (f.new_meta or {}).get("blocks"),
+                    "signature": (f.new_meta or {}).get("signature") or (f.old_meta or {}).get("signature"),
+                })
         return render_template(
             "list.html",
             title=(f"Diffing Result — {levels[0].title()}" if filter_level else "Diffing Result"),
@@ -629,14 +652,23 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             show_score=True,
             show_version=False,
             open_raw=False,
-            current_tab='diffs'
+            current_tab='diffs',
+            show_diff_columns=True
         )
 
     @app.route("/unchanged")
     def unchanged_page():
         conn = get_conn()
         categories = get_all_functions_with_scores(conn)
-        items = [{"name": f.name, "version": "old"} for f in categories.get("unchanged", [])]
+        items = []
+        for f in categories.get("unchanged", []):
+            items.append({
+                "name": f.name,
+                "version": "old",
+                "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
+                "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
+                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+            })
         return render_template(
             "list.html",
             title="Unchanged",
@@ -644,7 +676,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             show_score=False,
             show_version=False,
             open_raw=True,
-            current_tab='unchanged'
+            current_tab='unchanged',
+            show_signature_only=True
         )
 
     @app.route("/unmatched")
@@ -652,8 +685,22 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         conn = get_conn()
         categories = get_all_functions_with_scores(conn)
         items = []
-        items.extend({"name": f.name, "version": "new"} for f in categories.get("added", []))
-        items.extend({"name": f.name, "version": "old"} for f in categories.get("removed", []))
+        for f in categories.get("added", []):
+            items.append({
+                "name": f.name,
+                "version": "new",
+                "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
+                "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
+                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+            })
+        for f in categories.get("removed", []):
+            items.append({
+                "name": f.name,
+                "version": "old",
+                "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
+                "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
+                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+            })
         return render_template(
             "list.html",
             title="Unmatched",
@@ -661,7 +708,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             show_score=False,
             show_version=True,
             open_raw=True,
-            current_tab='unmatched'
+            current_tab='unmatched',
+            show_signature_only=True
         )
 
     @app.route("/function/<path:name>")

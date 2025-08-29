@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS functions (
     binary_version TEXT NOT NULL,
     function_name TEXT NOT NULL,
     pseudocode BLOB NOT NULL,
+    address INTEGER,
+    blocks INTEGER,
+    signature TEXT,
     UNIQUE(binary_version, function_name)
 );
 
@@ -34,6 +37,23 @@ def decompress_pseudo(blob: bytes) -> str:
 def init_db(db_path: str):
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    # Lightweight migration: add new columns if they don't exist yet
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(functions)").fetchall()}
+        to_add = []
+        if "address" not in cols:
+            to_add.append("ALTER TABLE functions ADD COLUMN address INTEGER")
+        if "blocks" not in cols:
+            to_add.append("ALTER TABLE functions ADD COLUMN blocks INTEGER")
+        if "signature" not in cols:
+            to_add.append("ALTER TABLE functions ADD COLUMN signature TEXT")
+        for stmt in to_add:
+            try:
+                conn.execute(stmt)
+            except Exception as e:
+                logger.warning(f"Migration step failed: {stmt}: {e}")
+    except Exception as e:
+        logger.warning(f"Could not run PRAGMA table_info migration checks: {e}")
     conn.commit()
     return conn
 
@@ -54,6 +74,20 @@ def insert_function(conn, version: str, name: str, pseudocode: bytes):
         #     (pseudocode, version, name),
         # )
         # conn.commit()
+
+def insert_function_with_meta(conn, version: str, name: str, pseudocode: bytes, address: int | None, blocks: int | None, signature: str | None):
+    logger.info(f"Inserting function: {name} ({version}) addr={hex(address) if isinstance(address, int) else address} blocks={blocks}")
+    try:
+        conn.execute(
+            """
+            INSERT INTO functions (binary_version, function_name, pseudocode, address, blocks, signature)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (version, name, pseudocode, address, blocks, signature),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        logger.warning(f"Duplicate function skipped: {name} ({version})")
 
 def upsert_binary_metadata(conn, version: str, address_min: int, address_max: int, function_count: int, metadata_blob: bytes):
     logger.info(f"Saving metadata for {version}: funcs={function_count}, range={hex(address_min)}-{hex(address_max)}")

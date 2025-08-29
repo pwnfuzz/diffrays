@@ -4,7 +4,7 @@ import re
 import ida_domain
 from ida_domain.database import IdaCommandOptions
 from ida_domain.names import DemangleFlags, SetNameFlags
-from diffrays.database import insert_function, compress_pseudo, init_db, upsert_binary_metadata
+from diffrays.database import insert_function, insert_function_with_meta, compress_pseudo, init_db, upsert_binary_metadata
 from diffrays.explorer import explore_database
 from diffrays.log import get_logger
 
@@ -26,6 +26,18 @@ def analyze_binary(db_path: str, version: str):
                 if demangle_named_name is not None:
                     logger.debug(f'Demangled Function Name: {demangle_named_name}')
                     name = demangle_named_name
+
+                # logger.debug(f'Address: {hex(func.start_ea)}')
+
+                # Get basic blocks
+                bb_count = 0
+                for _ in db.functions.get_basic_blocks(func):
+                    bb_count += 1
+                # logger.debug(f'Basic blocks: {bb_count}')
+
+                # Get signature
+                signature = db.functions.get_signature(func)
+                # logger.debug(f'Signature: {signature}')
                 
                 pseudo = db.functions.get_pseudocode(func)
                 if not pseudo:
@@ -36,7 +48,7 @@ def analyze_binary(db_path: str, version: str):
                 # sanitized_name = sanitize_filename(name)
                 
                 logger.debug(f"Processed function: {name}")
-                yield name, compressed
+                yield name, compressed, func.start_ea, bb_count, signature
                 
             except Exception as e:
                 logger.error(f"Error processing function {func}: {e}")
@@ -61,8 +73,12 @@ def run_diff(old_path, new_path, db_path):
 
         logger.info(f"Decompiling {old_path}")
         old_count = 0
-        for name, compressed in analyze_binary(old_path, "old"):
-            insert_function(conn, "old", name, compressed)
+        for name, compressed, addr, blocks, signature in analyze_binary(old_path, "old"):
+            try:
+                insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
+            except Exception:
+                # Fallback to legacy insert if schema mismatch
+                insert_function(conn, "old", name, compressed)
             old_count += 1
         
         logger.info(f"Decompiled {old_count} functions from old binary")
@@ -83,8 +99,11 @@ def run_diff(old_path, new_path, db_path):
 
         logger.info(f"Decompiling {new_path}")
         new_count = 0
-        for name, compressed in analyze_binary(new_path, "new"):
-            insert_function(conn, "new", name, compressed)
+        for name, compressed, addr, blocks, signature in analyze_binary(new_path, "new"):
+            try:
+                insert_function_with_meta(conn, "new", name, compressed, addr, blocks, signature)
+            except Exception:
+                insert_function(conn, "new", name, compressed)
             new_count += 1
         
         logger.info(f"Decompiled {new_count} functions from new binary")

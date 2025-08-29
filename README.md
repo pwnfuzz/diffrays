@@ -70,9 +70,9 @@
 ### 0.8 - Theta
 
 **Added Features:** 
-- ⬜ Ensure headless downloads symbols from servers.  
+- ✅ Ensure headless downloads symbols from servers.  
 - ✅ Add basic information about the binary to the dashboard like base address, md5 hash, format, module, etc.. 
-- ⬜ Store more information about the functions in the database and show them in webpage too like: Address, Signature.
+- ✅ Store more information about the functions in the database and show them in webpage too like: Address, Signature.
 
 ---
 
@@ -100,5 +100,5 @@
 
 ## Things to Fix
 
-- The Diffing highlights are not proper.
-- If the main site is light mode then diff should follow the same.
+- ⬜ The Diffing highlights are not proper.
+- ⬜ If the main site is light mode then diff should follow the same.
