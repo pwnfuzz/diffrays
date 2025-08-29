@@ -62,7 +62,7 @@
 **Added Features:** 
 - ✅ Make a new web application with better visualization to view all data.  
 - ✅ Implement % of code changed.  
-- ✅ Similar to Bindiff visuals: ![example](https://insinuator.net/wp-content/uploads/2013/07/diff-result.png)  
+- ✅ Similar to Bindiff visuals: https://insinuator.net/wp-content/uploads/2013/07/diff-result.png  
 - ✅ Implement search feature to search for functions.  
 
 ---
