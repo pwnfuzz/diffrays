@@ -70,6 +70,15 @@
 ### 0.8 - Theta
 
 **Added Features:** 
+- ⬜ Ensure headless downloads symbols from servers.  
+- ✅ Add basic information about the binary to the dashboard like base address, md5 hash, format, module, etc.. 
+- ⬜ Store more information about the functions in the database and show them in webpage too like: Address, Signature.
+
+---
+
+### 0.9 - Iota
+
+**Added Features:** 
 - ✅ Make IDA headless plugin script which takes 2 binaries as input and creates final output as SQLite3.  
 - ⬜ Make the application portal, that means make the server feature of the application works without IDA.
 - ⬜ Add `--debug` then only display the logs.
@@ -81,19 +90,10 @@
 
 ---
 
-### 0.9 - Iota
-
-**Added Features:** 
-- ⬜ Ensure headless downloads symbols from servers.  
-- ⬜ Create a logo for the project.  
-- ⬜ Add basic information about the binary to the dashboard like base address, md5 hash, format, module, etc.. 
-- ⬜ Store more information about the functions in the database and show them in webpage too like: Address, Signature.
-
----
-
 ### 1.0 - Kappa
 
 **To Do:**  
+- ⬜ Create a logo for the project.  
 - ⬜ LIVE
 
 ---

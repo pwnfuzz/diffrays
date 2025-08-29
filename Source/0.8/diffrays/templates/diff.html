@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin: 20px;">
+  {% if not has_old and not has_new %}
+  <div class="empty">No pseudocode available for this function in either version.</div>
+  {% endif %}
+</div>
+{% endblock %}
