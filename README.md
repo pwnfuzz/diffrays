@@ -93,12 +93,12 @@
 ### 1.0 - Kappa
 
 **To Do:**  
-- ⬜ Create a logo for the project.  
+- ✅ Create a logo for the project.  
 - ⬜ LIVE
 
 ---
 
 ## Things to Fix
 
-- ⬜ The Diffing highlights are not proper.
-- ⬜ If the main site is light mode then diff should follow the same.
+- ✅ The Diffing highlights are not proper.
+- ✅ If the main site is light mode then diff should follow the same.

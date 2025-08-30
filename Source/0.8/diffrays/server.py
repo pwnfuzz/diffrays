@@ -9,7 +9,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from dataclasses import dataclass
 import os
 
-from flask import Flask, g, render_template, request, abort, url_for, redirect
+from flask import Flask, g, render_template, request, abort, url_for, redirect, send_from_directory
 from .log import get_logger
 
 
@@ -63,12 +63,17 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     Create a Flask app that serves function lists and HTML diffs from a diffrays SQLite DB.
     """
     app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+    app.static_folder = os.path.join(os.path.dirname(__file__), 'static')
     app.config["DB_PATH"] = str(Path(db_path).resolve())
     app.config["HOST"] = host
     app.config["PORT"] = port
 
     logger_name = f"diffrays.server[{Path(db_path).name}]"
     app.logger_obj = get_logger(logger_name, log_file=log_file)
+
+    @app.route('/static/<path:filename>')
+    def static_files(filename):
+        return send_from_directory(app.static_folder, filename)
 
     @app.before_request
     def _log_request():
@@ -247,7 +252,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         <html lang="en">
            <head>
               <meta charset="utf-8" />
-              <title>Diff Output (Dracula)</title>
+              <title>Diff Output</title>
               <style>
                  body {{
                  margin:20px;
@@ -313,58 +318,31 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                  text-align:center;
                  }}
                  
-                 /* Full line highlighting for additions (green) */
-                 .diff tr.diff_add td,
+                 /* Standard difflib highlighting */
                  .diff .diff_add {{
-                 background:#244032 !important;
-                 color:#50fa7b !important;
+                 background:#244032;
+                 color:#50fa7b;
                  }}
                  
-                 /* Full line highlighting for changes (orange) - controlled by checkbox */
-                 .diff tr.diff_chg td,
                  .diff .diff_chg {{
-                 background:#4b3d1f !important;
-                 color:#ffb86c !important;
+                 background:#4b3d1f;
+                 color:#ffb86c;
                  }}
                  
                  /* Hide character-level highlighting when checkbox is unchecked */
-                 body.hide-char-level .diff tr.diff_chg td,
                  body.hide-char-level .diff .diff_chg {{
                  background: transparent !important;
                  color: inherit !important;
                  }}
                  
-                 /* Full line highlighting for deletions (red) */
-                 .diff tr.diff_sub td,
                  .diff .diff_sub {{
-                 background:#4a2c32 !important;
-                 color:#ff5555 !important;
+                 background:#4a2c32;
+                 color:#ff5555;
                  }}
                  
-                 /* Override any inline span highlighting within diff lines */
-                 .diff_add span,
-                 .diff_chg span,
-                 .diff_sub span {{
-                 background:inherit !important;
-                 color:inherit !important;
-                 }}
-                 
-                 /* Regular hover for non-addition lines */
-                 .diff tr:not(.diff_add):hover td {{
+                 /* Regular hover effects */
+                 .diff tr:hover td {{
                  background:#383a59 !important;
-                 }}
-                 
-                 /* NO hover effect for addition lines - keep them green */
-                 .diff tr.diff_add:hover td {{
-                 background:#244032 !important;
-                 color:#50fa7b !important;
-                 }}
-                 
-                 /* Specific override for cells with diff_add content */
-                 .diff td:has(span.diff_add):hover,
-                 .diff td.diff_add:hover {{
-                 background:#244032 !important;
-                 color:#50fa7b !important;
                  }}
                  
                  .diff_next {{ display:none !important; }}
@@ -394,46 +372,29 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                  color: #495057;
                  }}
                  
-                 /* Full line highlighting for light mode */
-                 body.light .diff tr.diff_add td,
+                 /* Light mode highlighting */
                  body.light .diff .diff_add {{
-                 background:#d4edda !important;
-                 color:#155724 !important;
+                 background:#d4edda;
+                 color:#155724;
                  }}
-                 body.light .diff tr.diff_chg td,
                  body.light .diff .diff_chg {{
-                 background:#fff3cd !important;
-                 color:#856404 !important;
+                 background:#fff3cd;
+                 color:#856404;
                  }}
-                 body.light .diff tr.diff_sub td,
                  body.light .diff .diff_sub {{
-                 background:#f8d7da !important;
-                 color:#721c24 !important;
+                 background:#f8d7da;
+                 color:#721c24;
                  }}
                  
                  /* Light mode: Hide character-level highlighting when checkbox is unchecked */
-                 body.light.hide-char-level .diff tr.diff_chg td,
                  body.light.hide-char-level .diff .diff_chg {{
                  background: transparent !important;
                  color: inherit !important;
                  }}
                  
                  /* Light mode hover effects */
-                 body.light .diff tr:not(.diff_add):hover td {{
+                 body.light .diff tr:hover td {{
                  background:#e2e6ea !important;
-                 }}
-                 
-                 /* Light mode: NO hover effect for addition lines - keep them green */
-                 body.light .diff tr.diff_add:hover td {{
-                 background:#d4edda !important;
-                 color:#155724 !important;
-                 }}
-                 
-                 /* Light mode: Specific override for cells with diff_add content */
-                 body.light .diff td:has(span.diff_add):hover,
-                 body.light .diff td.diff_add:hover {{
-                 background:#d4edda !important;
-                 color:#155724 !important;
                  }}
                  
                  #toggle-dark {{
@@ -472,7 +433,13 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                  (function(){{
                      try {{
                          const saved = localStorage.getItem('diffrays-theme');
-                         if (saved === 'light') {{ document.body.classList.add('light'); }}
+                         if (saved === 'light') {{ 
+                             document.body.classList.add('light'); 
+                             document.documentElement.setAttribute('data-theme', 'light');
+                             // Update button text to reflect current state
+                             const btn = document.getElementById('toggle-dark');
+                             if (btn) btn.textContent = "🌙 Toggle Dark Mode";
+                         }}
                      }} catch(e) {{}}
                  }})();
 
@@ -490,7 +457,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
 
                  const btn = document.getElementById('toggle-dark');
                  const charLevelToggle = document.getElementById('char-level-toggle');
-                 let light = false;
+                 let light = document.body.classList.contains('light');
                  
                  // Dark/Light mode toggle
                  btn.addEventListener('click', () => {{
@@ -501,9 +468,11 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                      }} else {{
                        btn.textContent="🌙 Toggle Light Mode";
                      }}
-                     try {{ localStorage.setItem('diffrays-theme', light ? 'light' : 'dark'); }} catch(e) {{}}
-                     // Update addition colors when theme changes
-                     updateAdditionColors();
+                     try {{ 
+                         localStorage.setItem('diffrays-theme', light ? 'light' : 'dark'); 
+                         // Also update the documentElement attribute to match main site behavior
+                         document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+                     }} catch(e) {{}}
                  }});
                  
                  // Character level highlighting toggle
@@ -514,63 +483,6 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                          document.body.classList.add('hide-char-level');
                      }}
                  }});
-                 
-                 // Add full-line highlighting and hover protection
-                 function addFullLineClasses() {{
-                     const diffTable = document.querySelector('table.diff');
-                     if (diffTable) {{
-                         const tds = diffTable.querySelectorAll('td');
-                         tds.forEach(td => {{
-                             // Highlight full lines for additions (green)
-                             if (td.querySelector('span.diff_add')) {{
-                                 td.style.backgroundColor = '#244032';
-                                 td.style.color = '#50fa7b';
-                                 td.classList.add('diff_add');
-                                 
-                                 // Add specific hover protection
-                                 td.addEventListener('mouseenter', function() {{
-                                     if (document.body.classList.contains('light')) {{
-                                         this.style.backgroundColor = '#d4edda';
-                                         this.style.color = '#155724';
-                                     }} else {{
-                                         this.style.backgroundColor = '#244032';
-                                         this.style.color = '#50fa7b';
-                                     }}
-                                 }});
-                                 
-                                 td.addEventListener('mouseleave', function() {{
-                                     if (document.body.classList.contains('light')) {{
-                                         this.style.backgroundColor = '#d4edda';
-                                         this.style.color = '#155724';
-                                     }} else {{
-                                         this.style.backgroundColor = '#244032';
-                                         this.style.color = '#50fa7b';
-                                     }}
-                                 }});
-                             }}
-                         }});
-                     }}
-                 }}
-                 
-                 // Update colors when theme changes
-                 function updateAdditionColors() {{
-                     const additionCells = document.querySelectorAll('td.diff_add');
-                     additionCells.forEach(td => {{
-                         if (document.body.classList.contains('light')) {{
-                             td.style.backgroundColor = '#d4edda';
-                             td.style.color = '#155724';
-                         }} else {{
-                             td.style.backgroundColor = '#244032';
-                             td.style.color = '#50fa7b';
-                         }}
-                     }});
-                 }}
-                 
-                 // Run immediately
-                 addFullLineClasses();
-                 
-                 // Also run when DOM is ready
-                 document.addEventListener('DOMContentLoaded', addFullLineClasses);
               </script>
            </body>
         </html>
@@ -647,7 +559,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                 })
         return render_template(
             "list.html",
-            title=(f"Diffing Result — {levels[0].title()}" if filter_level else "Diffing Result"),
+            title=(f"Diff Result — {levels[0].title()}" if filter_level else "Diff Result"),
             items=items,
             show_score=True,
             show_version=False,
@@ -731,8 +643,18 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         if not has_old and not has_new:
             return render_template("diff.html", name=name, has_old=False, has_new=False)
 
+        # Get module names from metadata
+        meta = fetch_binary_metadata(conn)
+        old_module = "OLD"
+        new_module = "NEW"
+        
+        if meta and meta.get("old") and meta["old"].get("metadata") and meta["old"]["metadata"].get("metadata"):
+            old_module = meta["old"]["metadata"]["metadata"].get("module", "OLD")
+        if meta and meta.get("new") and meta["new"].get("metadata") and meta["new"]["metadata"].get("metadata"):
+            new_module = meta["new"]["metadata"]["metadata"].get("module", "NEW")
+
         # Generate Dracula-themed diff
-        diff_html = make_dracula_diff_html(old_text or "", new_text or "", "OLD_VERSION", "NEW_VERSION")
+        diff_html = make_dracula_diff_html(old_text or "", new_text or "", f"{old_module}", f"{new_module}")
         return diff_html
     
     @app.route("/debug/functions")
