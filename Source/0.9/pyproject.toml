@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffrays"
+version = "0.1.0"
+description = "Binary Diff Analysis Tool - Decompile, Compare, and Visualize Binary Changes"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers"
+]
+
+dependencies = [
+    "flask>=2.0.0",
+    "tqdm>=4.60.0",
+]
+
+[project.scripts]
+diffrays = "diffrays.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["diffrays  "]
+
+[project.urls]
+Homepage = "https://github.com/pwnfuzz/diffrays"
+Documentation = "https://github.com/pwnfuzz/diffrays#readme"
+Repository = "https://github.com/pwnfuzz/diffrays"
+Issues = "https://github.com/pwnfuzz/diffrays/issues"
