@@ -27,7 +27,7 @@ diffrays = "diffrays.cli:main"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["diffrays"]
+where = ["."]
 
 [tool.setuptools.package-data]
 "diffrays" = [

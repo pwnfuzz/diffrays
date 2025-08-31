@@ -1,8 +1,7 @@
 <p align='center'>
-<img src="/diffrays/static/images/logo-dark.png" width=60% >
 <picture>
   <source srcset="/diffrays/static/images/logo-dark.png" media="(prefers-color-scheme: dark)" width=60% >
-  <source srcset="/diffrays/static/images/logo-light.png" media="(prefers-color-scheme: light)" wwidth=60% >
+  <source srcset="/diffrays/static/images/logo-light.png" media="(prefers-color-scheme: light)" width=60% >
   <img src="light-image.png" alt="DiffRays Logo">
 </picture>
 </p>
