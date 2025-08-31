@@ -17,7 +17,7 @@ DiffRays is a research-oriented tool for **binary patch diffing**, designed to a
 
 - 🔎 **Patch Diffing**: Compare functions across different binary versions to identify code changes.  
 - 🧩 **IDA Pro Integration**: Uses IDA Pro and the IDA Domain API for accurate pseudocode extraction.  
-- 📂 **SQLite Output**: Stores diff results in a SQLite database for easy reuse and analysis.  
+- 📂 **SQLite Output**: Stores results in a SQLite database for easy reuse and analysis.  
 - 🌐 **Web Interface**: Built-in server mode to browse, search, and visualize diff results interactively.  
 - 📊 **Research-Ready**: Designed to support vulnerability research and exploit development workflows.  
 
