@@ -133,14 +133,17 @@ Once you have a .sqlite file, launch the web interface to explore the diffs:
 
 4. **Browse interactively**
 	- Open http://127.0.0.1:5555
+	<br>
 	<img src="/diffrays/static/sample/dashboard.png">
 
 5. **Browse Diff Results**
 	- The Diff Result page shows the results of binary diffing and can be sorted based on changes.
+	<br>
 	<img src="/diffrays/static/sample/diff.png">
 
 6. **View Function Details**
 	- Clicking on a function displays the detailed diff result.
+	<br>
 	<img src="/diffrays/static/sample/result.png">
 
 ---
