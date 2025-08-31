@@ -4,6 +4,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from dataclasses import dataclass
 from flask import Flask, g, render_template, request, abort, url_for, redirect, send_from_directory
 from diffrays.log import log
+import logging
 import sqlite3
 import zlib
 import difflib
@@ -55,7 +56,7 @@ class FunctionInfo:
 # App factory & DB helpers
 # -----------------------------
 
-def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.0.1", port: int = 5050):
+def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.0.1", port: int = 5050, debug_mode=False):
     """
     Create a Flask app that serves function lists and HTML diffs from a diffrays SQLite DB.
     """
@@ -65,7 +66,25 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     app.config["HOST"] = host
     app.config["PORT"] = port
 
-    logger_name = f"diffrays.server[{Path(db_path).name}]"
+    if debug_mode:
+        app.logger.setLevel(logging.DEBUG)
+    else:
+        app.logger.setLevel(logging.INFO)
+    
+    # If log file is specified, add a file handler
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_handler = logging.FileHandler(log_file)
+        if debug:
+            file_handler.setLevel(logging.DEBUG)
+        else:
+            file_handler.setLevel(logging.INFO)
+        
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        file_handler.setFormatter(formatter)
+        app.logger.addHandler(file_handler)
 
     @app.route('/static/<path:filename>')
     def static_files(filename):
@@ -73,18 +92,18 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
 
     @app.before_request
     def _log_request():
-        app.logger_obj.info("HTTP %s %s", request.method, request.path)
+        app.logger.info("HTTP %s %s", request.method, request.path)
 
     def get_conn() -> sqlite3.Connection:
         if "db_conn" not in g:
             path = app.config["DB_PATH"]
             if not Path(path).exists():
-                app.logger_obj.error("DB not found at %s", path)
+                app.logger.error("DB not found at %s", path)
                 abort(500, description=f"DB not found at {path}")
             conn = sqlite3.connect(path)
             conn.row_factory = sqlite3.Row
             g.db_conn = conn
-            app.logger_obj.debug("Opened SQLite connection to %s", path)
+            app.logger.debug("Opened SQLite connection to %s", path)
         return g.db_conn
 
     @app.teardown_appcontext
@@ -92,7 +111,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         conn = g.pop("db_conn", None)
         if conn is not None:
             conn.close()
-            app.logger_obj.debug("Closed SQLite connection")
+            app.logger.debug("Closed SQLite connection")
 
     # -----------------------------
     # Schema detection
@@ -104,9 +123,9 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             "has_tall": all(c in cols for c in ["function_name", "binary_version", "pseudocode"]),
         }
         if not schema["has_wide"] and not schema["has_tall"]:
-            app.logger_obj.error("Unsupported schema for table 'functions'. Columns: %s", cols)
+            app.logger.error("Unsupported schema for table 'functions'. Columns: %s", cols)
         else:
-            app.logger_obj.info("Detected schema: %s", "wide" if schema["has_wide"] else "tall")
+            app.logger.info("Detected schema: %s", "wide" if schema["has_wide"] else "tall")
         return schema
 
     def decompress(blob: Optional[bytes]) -> Optional[str]:
@@ -115,7 +134,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         try:
             return zlib.decompress(blob).decode("utf-8", errors="replace")
         except Exception as e:
-            app.logger_obj.exception("Failed to decompress blob: %s", e)
+            app.logger.exception("Failed to decompress blob: %s", e)
             return None
 
     # -----------------------------
@@ -201,7 +220,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                     "metadata": parsed,
                 }
             except Exception as e:
-                app.logger_obj.exception("Failed to parse metadata for %s: %s", r["binary_version"], e)
+                app.logger.exception("Failed to parse metadata for %s: %s", r["binary_version"], e)
         return result
 
     def fetch_function_pair(conn: sqlite3.Connection, func_name: str) -> Tuple[Optional[str], Optional[str]]:
@@ -219,7 +238,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         ).fetchone()
         
         # Log for debugging
-        app.logger_obj.debug(f"Function {func_name}: old={old_row is not None}, new={new_row is not None}")
+        app.logger.debug(f"Function {func_name}: old={old_row is not None}, new={new_row is not None}")
         
         old_text = decompress(old_row["pseudocode"]) if old_row else None
         new_text = decompress(new_row["pseudocode"]) if new_row else None
@@ -495,7 +514,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         try:
             categories = get_all_functions_with_scores(conn)
         except Exception as e:
-            app.logger_obj.exception("Failed to categorize functions: %s", e)
+            app.logger.exception("Failed to categorize functions: %s", e)
             abort(500, description="Failed to categorize functions")
 
         total = sum(len(v) for v in categories.values())
@@ -627,14 +646,14 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         has_old = bool(old_text)
         has_new = bool(new_text)
 
-        app.logger_obj.info(f"Function {name}: has_old={has_old}, has_new={has_new}")
+        app.logger.info(f"Function {name}: has_old={has_old}, has_new={has_new}")
         
         # DEBUG: Check if content is actually different
         if has_old and has_new:
             if old_text == new_text:
-                app.logger_obj.warning(f"Function {name}: OLD and NEW content are IDENTICAL!")
+                app.logger.warning(f"Function {name}: OLD and NEW content are IDENTICAL!")
             else:
-                app.logger_obj.info(f"Function {name}: Content differs, diff should show changes")
+                app.logger.info(f"Function {name}: Content differs, diff should show changes")
         
         if not has_old and not has_new:
             return render_template("diff.html", name=name, has_old=False, has_new=False)
@@ -685,10 +704,10 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     return app
 
 
-def run_server(db_path: str, host: str = "127.0.0.1", port: int = 5555, log_file: Optional[str] = None):
+def run_server(db_path: str, host: str = "127.0.0.1", port: int = 5555, log_file: Optional[str] = None, debug_mode=None):
     """
     Convenience runner used by CLI.
     """
-    app = create_app(db_path=db_path, host=host, port=port, log_file=log_file)
-    app.logger_obj.info("Starting Flask on http://%s:%d (DB: %s)", host, port, db_path)
+    app = create_app(db_path=db_path, host=host, port=port, log_file=log_file, debug_mode=debug_mode)
+    app.logger.info("Starting Flask on http://%s:%d (DB: %s)", host, port, db_path)
     app.run(host=host, port=port, debug=False)
