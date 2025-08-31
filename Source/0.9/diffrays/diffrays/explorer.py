@@ -1,14 +1,12 @@
 from dataclasses import asdict
+from typing import Dict, Any
+from ida_domain.database import IdaCommandOptions
+from diffrays.log import log
 import json
 import zlib
-from typing import Dict, Any
-
 import ida_domain
-from ida_domain.database import IdaCommandOptions
 
-from diffrays.log import get_logger
 
-logger = get_logger(__name__)
 
 
 def _compress_metadata(metadata: Dict[str, Any]) -> bytes:
@@ -17,6 +15,7 @@ def _compress_metadata(metadata: Dict[str, Any]) -> bytes:
 
 
 def explore_database(binary_path: str) -> Dict[str, Any]:
+    
     """Explore basic database information for a single binary path.
 
     Returns a dict with keys: minimum_ea, maximum_ea, function_count, metadata (dict), compressed_blob (bytes)
@@ -43,12 +42,8 @@ def explore_database(binary_path: str) -> Dict[str, Any]:
 
         compressed_blob = _compress_metadata(full_meta)
 
-        logger.info(
-            "Explored binary: range %s - %s, functions=%d",
-            hex(minimum_ea),
-            hex(maximum_ea),
-            function_count,
-        )
+        log.info(
+            f"Explored binary: range {hex(minimum_ea)} - {hex(maximum_ea)}, functions{function_count}")
 
         return {
             "minimum_ea": minimum_ea,

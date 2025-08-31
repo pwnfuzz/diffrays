@@ -1,17 +1,14 @@
 from __future__ import annotations
-
+from pathlib import Path
+from typing import Optional, Tuple, List, Dict, Any
+from dataclasses import dataclass
+from flask import Flask, g, render_template, request, abort, url_for, redirect, send_from_directory
+from diffrays.log import log
 import sqlite3
 import zlib
 import difflib
 import re
-from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
-from dataclasses import dataclass
 import os
-
-from flask import Flask, g, render_template, request, abort, url_for, redirect, send_from_directory
-from diffrays.log import get_logger
-
 
 # -----------------------------
 # Data classes
@@ -69,7 +66,6 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     app.config["PORT"] = port
 
     logger_name = f"diffrays.server[{Path(db_path).name}]"
-    app.logger_obj = get_logger(logger_name, log_file=log_file)
 
     @app.route('/static/<path:filename>')
     def static_files(filename):

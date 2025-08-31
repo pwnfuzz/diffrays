@@ -1,37 +1,82 @@
-import logging
+"""
+Custom logging module for DiffRays.
+Supports different log levels and output to console/file.
+"""
+
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
-def get_logger(
-    name: str = "diffrays",
-    log_file: str | None = None,
-    console_level: int = logging.CRITICAL + 1,  # default: silent
-    file_level: int | None = None,
-):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+class CustomLogger:
+    def __init__(self, name: str = "diffrays", debug: bool = False, log_file: Optional[str] = None):
+        self.name = name
+        self.debug_mode = debug
+        self.log_file = log_file
+        self._file_handle = None
+        
+        if log_file:
+            # Create directory if it doesn't exist
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._file_handle = open(log_file, 'a', encoding='utf-8')
+    
+    def _write_log(self, level: str, message: str, always_show: bool = False):
+        """Internal method to write log messages"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_message = f"{timestamp} [{level}] {self.name}: {message}"
+        
+        # Write to console if debug mode is enabled OR it's an error (always_show)
+        if self.debug_mode or always_show:
+            print(log_message, file=sys.stderr)
+        
+        # Write to file if log file is specified (ALWAYS write to file when log file exists)
+        if self._file_handle:
+            self._file_handle.write(log_message + '\n')
+            self._file_handle.flush()
+    
+    def debug(self, message: str):
+        """Log debug message (only shown in debug mode, always written to file if logging enabled)"""
+        self._write_log("DEBUG", message)
+    
+    def info(self, message: str):
+        """Log info message (only shown in debug mode, always written to file if logging enabled)"""
+        self._write_log("INFO", message)
+    
+    def warning(self, message: str):
+        """Log warning message (only shown in debug mode, always written to file if logging enabled)"""
+        self._write_log("WARNING", message)
+    
+    def error(self, message: str):
+        """Log error message (always shown, always written to file if logging enabled)"""
+        self._write_log("ERROR", message, always_show=True)
+    
+    def configure(self, debug: bool = False, log_file: Optional[str] = None):
+        """Reconfigure the logger"""
+        self.debug_mode = debug
+        
+        # Close existing file handle if any
+        if self._file_handle:
+            self._file_handle.close()
+            self._file_handle = None
+        
+        # Open new log file if specified
+        if log_file:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._file_handle = open(log_file, 'a', encoding='utf-8')
+            # Write a header to indicate new session
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._file_handle.write(f"\n\n=== DiffRays Log Session Started at {timestamp} ===\n\n")
+            self._file_handle.flush()
+    
+    def close(self):
+        """Close the log file handle"""
+        if self._file_handle:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._file_handle.write(f"\n=== DiffRays Log Session Ended at {timestamp} ===\n")
+            self._file_handle.close()
+            self._file_handle = None
 
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-    # Console handler
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(console_level)
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-    # File handler
-    if log_file:
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-        fh.setLevel(file_level or logging.DEBUG)
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
-
-    return logger
+# Global logger instance
+log = CustomLogger()

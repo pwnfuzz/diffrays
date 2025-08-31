@@ -4,9 +4,8 @@ import os
 import logging
 from datetime import datetime
 from pathlib import Path
-from diffrays.log import get_logger
+from diffrays.log import log
 
-logger = get_logger(__name__)
 
 BANNER = r"""
 ______ _  __  ________                
@@ -44,19 +43,19 @@ def check_ida_available():
         # Only log warning if debug mode is enabled elsewhere
         return False
 
-def run_diff_safe(old_path, new_path, output_db, log_file, log_level, debug_mode):
+def run_diff_safe(old_path, new_path, output_db, log_file, debug_mode):
     """Safely run diff analysis with proper error handling"""
     try:
         from diffrays.analyzer import run_diff
         
         if debug_mode:
-            logger.info("Starting analysis: %s -> %s", old_path, new_path)
-            logger.info("Output database: %s", output_db)
+            log.info(f"Starting analysis: {old_path} -> {new_path}")
+            log.info(f"Output database: {output_db}")
         
         run_diff(old_path, new_path, output_db)
         
         if debug_mode:
-            logger.info("Analysis completed successfully!")
+            log.info("Analysis completed successfully!")
         print(f"\nAnalysis complete! Database: {output_db}")
         if log_file:
             print(f"Log file: {log_file}")
@@ -64,7 +63,7 @@ def run_diff_safe(old_path, new_path, output_db, log_file, log_level, debug_mode
         
     except ImportError as e:
         if debug_mode:
-            logger.error("IDA analysis components not available: %s", e)
+            log.error(f"IDA analysis components not available: {e}")
         print(f"\nIDA analysis not available: {e}")
         print("Please ensure:")
         print("1. IDA Pro is installed")
@@ -73,14 +72,14 @@ def run_diff_safe(old_path, new_path, output_db, log_file, log_level, debug_mode
         sys.exit(1)
     except Exception as e:
         if debug_mode:
-            logger.error("Analysis failed: %s", e)
+            log.error(f"Analysis failed: {e}")
         print(f"\nAnalysis failed: {e}")
         sys.exit(1)
 
 def main():
     # Display banner (always show)
     print(BANNER)
-    
+
     parser = argparse.ArgumentParser(
         prog="diffrays",
         description="Binary Diff Analysis Tool - Decompile, Compare, and Visualize Binary Changes",
@@ -90,15 +89,18 @@ Examples:
   diffrays diff old_binary.exe new_binary.exe
   diffrays diff old.so new.so -o custom_name.sqlite --log
   diffrays server --db-path result_old_new_20231201.sqlite --debug
-  
+
 For more information, visit: https://github.com/yourusername/diffrays
         """
     )
-    
+
     sub = parser.add_subparsers(dest="command", required=True, help="Command to execute")
 
     # Diff command
-    diff_parser = sub.add_parser("diff", help="Analyze two binaries and generate differential database\n\nRequirements:\n• IDA Pro with HexRays Decompiler plugin\n• Valid IDADIR environment variable configuration\n• ida_domain Python package installation")
+    diff_parser = sub.add_parser(
+        "diff", 
+        help="Analyze two binaries and generate differential database\n\nRequirements:\n• IDA Pro with HexRays Decompiler plugin\n• Valid IDADIR environment variable configuration\n• ida_domain Python package installation"
+    )
     diff_parser.add_argument("old", help="Path to old/original binary")
     diff_parser.add_argument("new", help="Path to new/modified binary")
     diff_parser.add_argument("-o", "--output", help="SQLite output file (default: auto-generated)")
@@ -119,83 +121,64 @@ For more information, visit: https://github.com/yourusername/diffrays
     debug_mode = getattr(args, 'debug', False)
 
     if args.command == "diff":
-        # Check if IDA is available first
         if not check_ida_available():
             print("\nIDA analysis components not available!")
-            print("The 'diff' command requires IDA Pro to be installed and configured.")
-            print("\nPlease ensure:")
-            print("1. IDA Pro is installed")
-            print("2. IDADIR environment variable is set correctly")
-            print("3. ida_domain Python package is installed")
-            print("\nYou can still use the server to view existing databases:")
-            print("diffrays server --db-path existing_database.sqlite")
+            print("The 'diff' command requires IDA Pro to be installed and configured.\n")
             sys.exit(1)
 
-        # Set log level - only show warnings/errors unless debug mode
-        log_level = logging.DEBUG if debug_mode else logging.CRITICAL + 1
-        
-        # Generate output filename if not provided
+        # Output filename
         output_db = args.output or generate_db_name(args.old, args.new)
+
+        # Log file (optional)
+        log_file = generate_log_name(args.old, args.new) if getattr(args, "log", False) else None
         
-        # Setup logging - file gets everything, console gets only based on debug mode
-        log_file = None
-        if args.log:
-            log_file = generate_log_name(args.old, args.new)
-            if debug_mode:
-                print(f"Logging to file: {log_file}")
+        # Configure the global logger
+        log.configure(debug=debug_mode, log_file=log_file)
         
-        # Configure logger - file gets all levels, console gets only warnings+ or debug
-        logger = get_logger("diffrays.analyzer", log_file, 
-                           file_level=logging.DEBUG if args.log else None,
-                           console_level=log_level)
-        
-        # Run analysis with safe error handling
-        run_diff_safe(args.old, args.new, output_db, log_file, log_level, debug_mode)
+        if args.log and debug_mode:
+            log.info(f"Logging to file: {log_file}")
+
+        # Run diff safely
+        run_diff_safe(args.old, args.new, output_db, log_file, debug_mode)
 
     elif args.command == "server":
-        # Set log level - only show warnings/errors unless debug mode
-        log_level = logging.DEBUG if debug_mode else logging.CRITICAL + 1
-        
-        # Setup logging
         log_file = None
         if args.log:
             db_stem = Path(args.db_path).stem
             log_file = f"server_{db_stem}.log"
-            if debug_mode:
-                print(f"Server logging to file: {log_file}")
         
-        # Configure logger
-        logger = get_logger("diffrays.server", log_file, 
-                           file_level=logging.DEBUG if args.log else None,
-                           console_level=log_level)
+        # Configure the global logger
+        log.configure(debug=debug_mode, log_file=log_file)
         
+        if debug_mode and args.log:
+            log.info(f"Server logging to file: {log_file}")
+
         try:
-            # Import server components (should work without IDA)
             from diffrays.server import run_server
-            
+
             if debug_mode:
-                logger.info("Starting server for database: %s", args.db_path)
-                logger.info("Server URL: http://%s:%d", args.host, args.port)
-            
+                log.info(f"Starting server for database: {args.db_path}")
+                log.info(f"Server URL: http://{args.host}:{args.port}")
+
             print(f"\nStarting DiffRays Server")
             print(f"Database: {args.db_path}")
             print(f"URL: http://{args.host}:{args.port}")
             if not debug_mode:
                 print("Use --debug for detailed logging")
             print("Press Ctrl+C to stop the server\n")
-            
-            run_server(db_path=args.db_path, host=args.host, port=args.port, 
-                      log_file=log_file)
-            
+
+            run_server(db_path=args.db_path, host=args.host, port=args.port)
+
         except Exception as e:
-            # Always show critical errors, but details only in debug mode
-            if debug_mode:
-                logger.error("Server failed to start: %s", e)
+            log.error(f"Server failed to start: {e}")
             print(f"\nServer failed to start: {e}")
             if debug_mode:
                 import traceback
                 traceback.print_exc()
             sys.exit(1)
 
-if __name__ == '__main__':
+    # Close the log file at the end
+    log.close()
+
+if __name__ == "__main__":
     main()

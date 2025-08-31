@@ -1,8 +1,10 @@
 import sqlite3
 import zlib
-from diffrays.log import get_logger
+from diffrays.log import log
 
-logger = get_logger(__name__)
+
+# Initialize global logger (defaults to INFO on console)
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS functions (
@@ -35,6 +37,7 @@ def decompress_pseudo(blob: bytes) -> str:
     return zlib.decompress(blob).decode("utf-8")
 
 def init_db(db_path: str):
+    
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
     # Lightweight migration: add new columns if they don't exist yet
@@ -51,14 +54,15 @@ def init_db(db_path: str):
             try:
                 conn.execute(stmt)
             except Exception as e:
-                logger.warning(f"Migration step failed: {stmt}: {e}")
+                log.warning(f"Migration step failed: {stmt}: {e}")
     except Exception as e:
-        logger.warning(f"Could not run PRAGMA table_info migration checks: {e}")
+        log.warning(f"Could not run PRAGMA table_info migration checks: {e}")
     conn.commit()
     return conn
 
 def insert_function(conn, version: str, name: str, pseudocode: bytes):
-    logger.info(f"Inserting function: {name} ({version})")
+    
+    log.info(f"Inserting function: {name} ({version})")
     try:
         conn.execute(
             "INSERT INTO functions (binary_version, function_name, pseudocode) VALUES (?, ?, ?)",
@@ -66,17 +70,12 @@ def insert_function(conn, version: str, name: str, pseudocode: bytes):
         )
         conn.commit()
     except sqlite3.IntegrityError:
-        # Handle duplicate entry gracefully
-        logger.warning(f"Duplicate function skipped: {name} ({version})")
-        # Optionally, you can update the existing entry instead:
-        # conn.execute(
-        #     "UPDATE functions SET pseudocode = ? WHERE binary_version = ? AND function_name = ?",
-        #     (pseudocode, version, name),
-        # )
-        # conn.commit()
+        log.warning(f"Duplicate function skipped: {name} ({version})")
 
 def insert_function_with_meta(conn, version: str, name: str, pseudocode: bytes, address: int | None, blocks: int | None, signature: str | None):
-    logger.info(f"Inserting function: {name} ({version}) addr={hex(address) if isinstance(address, int) else address} blocks={blocks}")
+    
+    addr_str = hex(address) if isinstance(address, int) else address
+    log.info(f"Inserting function: {name} ({version}) addr={addr_str} blocks={blocks}")
     try:
         conn.execute(
             """
@@ -87,10 +86,11 @@ def insert_function_with_meta(conn, version: str, name: str, pseudocode: bytes, 
         )
         conn.commit()
     except sqlite3.IntegrityError:
-        logger.warning(f"Duplicate function skipped: {name} ({version})")
+        log.warning(f"Duplicate function skipped: {name} ({version})")
 
 def upsert_binary_metadata(conn, version: str, address_min: int, address_max: int, function_count: int, metadata_blob: bytes):
-    logger.info(f"Saving metadata for {version}: funcs={function_count}, range={hex(address_min)}-{hex(address_max)}")
+    
+    log.debug(f"Saving metadata for {version}: funcs={function_count}, range={hex(address_min)}-{hex(address_max)}")
     conn.execute(
         """
         INSERT INTO binaries (binary_version, address_min, address_max, function_count, metadata_blob)
