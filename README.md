@@ -136,6 +136,14 @@ Open http://127.0.0.1:5555
 
 <img src="/diffrays/static/sample/dashboard.png">
 
+5. The Diff Result page shows the results of binary diffing and can be sorted based on changes:
+
+<img src="/diffrays/static/sample/diff.png">
+
+6. Clicking on a function displays the detailed diff result:
+
+<img src="/diffrays/static/sample/result.png">
+
 ---
 
 ## 📖 Use Cases
