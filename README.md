@@ -80,13 +80,13 @@
 
 **Added Features:** 
 - ✅ Make IDA headless plugin script which takes 2 binaries as input and creates final output as SQLite3.  
-- ⬜ Make the application portal, that means make the server feature of the application works without IDA.
-- ⬜ Add `--debug` then only display the logs.
-- ⬜ Add a proper progress bar and better visual output for python.
-- ⬜ Add `--log` to store the log results in a file, dont ask for name use `log_<old_file>_<new_file>.txt`.
-- ⬜ Make a better `--help` output.
-- ⬜ Add project banner to the python script.
-- ⬜ Dont store it as output.sqlite instead `result_<old_file>_<new_file>_<timestamp>.sqlite`
+- ✅ Make the application portal, that means make the server feature of the application works without IDA.
+- ✅ Add `--debug` then only display the logs.
+- ✅ Add a proper progress bar and better visual output for python.
+- ✅ Add `--log` to store the log results in a file, dont ask for name use `log_<old_file>_<new_file>.txt`.
+- ✅ Make a better `--help` output.
+- ✅ Add project banner to the python script.
+- ✅ Dont store it as output.sqlite instead `result_<old_file>_<new_file>_<timestamp>.sqlite`
 
 ---
 

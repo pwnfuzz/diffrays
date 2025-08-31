@@ -185,7 +185,7 @@ For more information, visit: https://github.com/yourusername/diffrays
             print("Press Ctrl+C to stop the server\n")
             
             run_server(db_path=args.db_path, host=args.host, port=args.port, 
-                      log_file=log_file, debug_mode=debug_mode)
+                      log_file=log_file)
             
         except Exception as e:
             # Always show critical errors, but details only in debug mode

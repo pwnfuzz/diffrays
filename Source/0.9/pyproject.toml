@@ -12,19 +12,6 @@ license = {text = "MIT"}
 authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Security",
-    "Topic :: Software Development :: Disassemblers"
-]
 
 dependencies = [
     "flask>=2.0.0",
@@ -34,8 +21,18 @@ dependencies = [
 [project.scripts]
 diffrays = "diffrays.cli:main"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
-where = ["diffrays  "]
+where = ["diffrays"]
+
+[tool.setuptools.package-data]
+"diffrays" = [
+    "templates/*",
+    "static/*"
+]
+
 
 [project.urls]
 Homepage = "https://github.com/pwnfuzz/diffrays"

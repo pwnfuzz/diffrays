@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import os
 
 from flask import Flask, g, render_template, request, abort, url_for, redirect
-from .log import get_logger
+from diffrays.log import get_logger
 
 
 # -----------------------------

@@ -18,8 +18,10 @@ def analyze_binary(db_path: str, version: str):
     """Analyze binary and yield (function_name, compressed_pseudocode) for the given version"""
     ida_options = IdaCommandOptions(auto_analysis=True, new_database=True)
     with ida_domain.Database.open(db_path, ida_options, False) as db:
-        functions = db.functions.get_all()
-        for func in functions:
+        functions = list(db.functions.get_all())  # materialize generator
+        total_functions = len(functions)
+
+        for idx, func in enumerate(functions, start=1):
             try:
                 name = db.functions.get_name(func)
                 demangle_named_name = db.names.demangle_name(name, DemangleFlags.NODEFINIT)
@@ -27,32 +29,29 @@ def analyze_binary(db_path: str, version: str):
                     logger.debug(f'Demangled Function Name: {demangle_named_name}')
                     name = demangle_named_name
 
-                # logger.debug(f'Address: {hex(func.start_ea)}')
-
-                # Get basic blocks
-                bb_count = 0
-                for _ in db.functions.get_basic_blocks(func):
-                    bb_count += 1
-                # logger.debug(f'Basic blocks: {bb_count}')
+                # Count basic blocks
+                bb_count = sum(1 for _ in db.functions.get_basic_blocks(func))
 
                 # Get signature
                 signature = db.functions.get_signature(func)
-                # logger.debug(f'Signature: {signature}')
                 
+                # Get pseudocode
                 pseudo = db.functions.get_pseudocode(func)
                 if not pseudo:
                     logger.warning(f"No pseudocode for function: {name}")
                     continue
                     
                 compressed = compress_pseudo(pseudo)
-                # sanitized_name = sanitize_filename(name)
                 
                 logger.debug(f"Processed function: {name}")
+                print(f"[*] {db_path} : {idx}/{total_functions}", end="\r", flush=True)
+
                 yield name, compressed, func.start_ea, bb_count, signature
                 
             except Exception as e:
                 logger.error(f"Error processing function {func}: {e}")
                 continue
+        print()  # newline after final progress
 
 def run_diff(old_path, new_path, db_path):
     conn = init_db(db_path)
@@ -72,15 +71,25 @@ def run_diff(old_path, new_path, db_path):
             logger.error(f"Failed to explore/save OLD metadata: {e}")
 
         logger.info(f"Decompiling {old_path}")
+
+        # Count total OLD functions
+        old_total = 0
+        try:
+            with ida_domain.Database.open(old_path, IdaCommandOptions(auto_analysis=True), False) as db:
+                old_total = len(db.functions.get_all())
+        except Exception as e:
+            logger.warning(f"Could not count functions in {old_path}: {e}")
+
         old_count = 0
         for name, compressed, addr, blocks, signature in analyze_binary(old_path, "old"):
             try:
                 insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
             except Exception:
-                # Fallback to legacy insert if schema mismatch
                 insert_function(conn, "old", name, compressed)
             old_count += 1
-        
+            print(f"[*] {old_path} : {old_count}/{old_total}", end="\r", flush=True)
+
+        print()  # newline after progress
         logger.info(f"Decompiled {old_count} functions from old binary")
         
         # Explore and save NEW metadata
@@ -98,6 +107,15 @@ def run_diff(old_path, new_path, db_path):
             logger.error(f"Failed to explore/save NEW metadata: {e}")
 
         logger.info(f"Decompiling {new_path}")
+
+        # Count total NEW functions
+        new_total = 0
+        try:
+            with ida_domain.Database.open(new_path, IdaCommandOptions(auto_analysis=True), False) as db:
+                new_total = len(db.functions.get_all())
+        except Exception as e:
+            logger.warning(f"Could not count functions in {new_path}: {e}")
+
         new_count = 0
         for name, compressed, addr, blocks, signature in analyze_binary(new_path, "new"):
             try:
@@ -105,7 +123,9 @@ def run_diff(old_path, new_path, db_path):
             except Exception:
                 insert_function(conn, "new", name, compressed)
             new_count += 1
-        
+            print(f"[*] {new_path} : {new_count}/{new_total}", end="\r", flush=True)
+
+        print()
         logger.info(f"Decompiled {new_count} functions from new binary")
         logger.info(f"Total functions processed: {old_count + new_count}")
 
