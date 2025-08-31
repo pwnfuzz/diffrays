@@ -1,5 +1,5 @@
 <p align='center'>
-<img src="" width=60% >
+<img src="/diffrays/static/images/logo-dark.png" width=60% >
 </p>
 
 <!--
@@ -60,8 +60,6 @@ DiffRays is a research-oriented tool for **binary patch diffing**, designed to a
 
 ## 🚀 Usage
 
-Command-Line Help
-
 ```bash
 > diffrays --help
 
@@ -96,19 +94,17 @@ For more information, visit: https://github.com/pwnfuzz/diffrays
 ```
 
 1. **Run Patch Diffing in IDA**  
-
 Load your binaries in IDA and run DiffRays to generate diff results:  
-```bash
-python diffrays.py diff <path_to_old_binary> <path_to_new_binary>
-```
+    ```bash
+    python diffrays.py diff <path_to_old_binary> <path_to_new_binary>
+    ```
 
 2. **Start the DiffRays Server**  
-
 Once you have a .sqlite file, launch the web interface to explore the diffs:  
-```bash
-python diffrays.py server --db-path diff_results.sqlite
-```
-Open your browser at http://localhost:5555 to view results.
+    ```bash
+    python diffrays.py server --db-path diff_results.sqlite
+    ```
+    Open your browser at http://localhost:5555 to view results.
 
 ---
 
@@ -138,7 +134,7 @@ Open your browser at http://localhost:5555 to view results.
 4. **Browse interactively**
 Open http://127.0.0.1:5555
 
-<IMG>ADD HERE</IMG>
+<img src="/diffrays/static/sample/dashboard.png">
 
 ---
 
