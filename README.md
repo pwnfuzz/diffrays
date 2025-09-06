@@ -94,7 +94,15 @@
 
 **To Do:**  
 - ✅ Create a logo for the project.  
-- ⬜ LIVE
+- ✅ LIVE
+
+---
+
+### 1.1 - Lambda
+
+**To Do:**  
+- ⬜ Implement smart sorting based on blocks
+- ⬜ Additional: Download feature: HTML and PNG
 
 ---
 
