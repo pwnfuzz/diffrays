@@ -21,6 +21,7 @@ class FunctionInfo:
     new_text: Optional[str]
     modification_score: float = 0.0
     modification_level: str = "unchanged"
+    smart_ratio: float = 0.0
 
     def compute_modification_score(self) -> float:
         """Compute a modification score between 0.0 (unchanged) and 1.0 (completely different)"""
@@ -34,6 +35,36 @@ class FunctionInfo:
         matcher = difflib.SequenceMatcher(None, self.old_text, self.new_text)
         similarity = matcher.ratio()
         return 1.0 - similarity
+
+    def compute_smart_ratio(self, bb_count_old: Optional[int], bb_count_new: Optional[int]) -> float:
+        """Compute smart ratio based on block count differences and text similarity"""
+        if bb_count_old is None or bb_count_new is None:
+            # If we don't have block counts, fall back to regular modification score
+            return self.compute_modification_score()
+        
+        # Calculate block-based metrics
+        delta_blocks = abs(bb_count_old - bb_count_new)
+        block_ratio = min(bb_count_old, bb_count_new) / max(bb_count_old, bb_count_new)  # [0,1]
+        
+        # Get text similarity (same as in compute_modification_score)
+        if not self.old_text or not self.new_text:
+            similarity = 0.0  # Missing one version means no similarity
+        elif self.old_text == self.new_text:
+            similarity = 1.0  # Identical text
+        else:
+            # Use difflib to compute similarity
+            matcher = difflib.SequenceMatcher(None, self.old_text, self.new_text)
+            similarity = matcher.ratio()
+        
+        # Weight logic based on structural changes
+        if delta_blocks == 0:
+            # Structural stability -> downweight textual diffs
+            change_score = (1 - similarity) * 0.2
+        else:
+            # Structural change -> emphasize block differences
+            change_score = (1 - similarity) * 0.6 + (1 - block_ratio) * 0.4
+        
+        return change_score
 
     def determine_modification_level(self) -> str:
         """Categorize the modification level based on score"""
@@ -182,6 +213,11 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         for func_name, versions in func_dict.items():
             func_info = FunctionInfo(func_name, versions["old"], versions["new"])
             level = func_info.determine_modification_level()
+            
+            # Calculate smart ratio using block counts
+            old_blocks = versions["old_meta"].get("blocks") if versions["old_meta"] else None
+            new_blocks = versions["new_meta"].get("blocks") if versions["new_meta"] else None
+            func_info.smart_ratio = func_info.compute_smart_ratio(old_blocks, new_blocks)
             
             # Special cases for added/removed functions
             if versions["old"] is None and versions["new"] is not None:
@@ -566,6 +602,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                 items.append({
                     "name": f.name,
                     "score": f.modification_score,
+                    "smart_ratio": f.smart_ratio,
                     "old_addr": (f.old_meta or {}).get("address"),
                     "new_addr": (f.new_meta or {}).get("address"),
                     "old_blocks": (f.old_meta or {}).get("blocks"),
