@@ -63,7 +63,7 @@ def analyze_binary(db_path: str, version: str, debug: bool = False):
 
 
 def run_diff(old_path, new_path, db_path):
-    
+    print("[+] Analyzing the binaries using IDA PRO!")
     conn = init_db(db_path)
     try:
         # Explore and save OLD metadata
@@ -93,17 +93,20 @@ def run_diff(old_path, new_path, db_path):
             log.warning(f"Could not count functions in {old_path}: {e}")
 
         old_count = 0
+        print()
         for name, compressed, addr, blocks, signature in analyze_binary(old_path, "old"):
             try:
                 insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
             except Exception:
                 insert_function(conn, "old", name, compressed)
             old_count += 1
-            print(f"[*] {old_path} : {old_count}/{old_total}", end="\r", flush=True)
+            
+            print(f"[*] Exporting {old_path} : {old_count}/{old_total}", end="\r", flush=True)
 
-        print()  # newline after progress
         log.info(f"Decompiled {old_count} functions from old binary")
         
+        print()
+        print("-"*100)
         # Explore and save NEW metadata
         try:
             new_info = explore_database(new_path)
@@ -129,15 +132,17 @@ def run_diff(old_path, new_path, db_path):
             log.warning(f"Could not count functions in {new_path}: {e}")
 
         new_count = 0
+        print()
         for name, compressed, addr, blocks, signature in analyze_binary(new_path, "new"):
             try:
                 insert_function_with_meta(conn, "new", name, compressed, addr, blocks, signature)
             except Exception:
                 insert_function(conn, "new", name, compressed)
             new_count += 1
-            print(f"[*] {new_path} : {new_count}/{new_total}", end="\r", flush=True)
+            print(f"[*] Exporting {new_path} : {new_count}/{new_total}", end="\r", flush=True)
 
         print()
+        print("-"*100)
         log.info(f"Decompiled {new_count} functions from new binary")
         log.info(f"Total functions processed: {old_count + new_count}")
 
@@ -148,4 +153,5 @@ def run_diff(old_path, new_path, db_path):
     
     finally:
         conn.close()
-        print(f"Database written to {db_path}")
+        print()
+        print(f"[+] Database written to {db_path}")
