@@ -37,7 +37,7 @@ def analyze_binary(db_path: str, version: str, debug: bool = False):
                         log.debug(f"Demangled Function: {name}")
 
                 # Convert generator to list for basic block count
-                bb_count = len(list(db.functions.get_basic_blocks(func)))
+                bb_count = db.functions.get_flowchart(func)
                 signature = db.functions.get_signature(func)
                 pseudo = db.functions.get_pseudocode(func)
                 if not pseudo:
