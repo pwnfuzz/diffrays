@@ -21,6 +21,7 @@
       {% endif %}
       {% if show_score %}
       <th style="cursor:pointer;" onclick="toggleScoreSort()" id="scoreHeader">Ratio ↓</th>
+      <th style="cursor:pointer;" onclick="toggleSmartRatioSort()" id="smartRatioHeader">S. Ratio ↓</th>
       {% endif %}
       {% if show_version %}
       <th>Version</th>
@@ -50,6 +51,7 @@
       {% endif %}
       {% if show_score %}
       <td data-score="{{ '%.6f'|format(it.score) }}">{{ '%.3f'|format(it.score) }}</td>
+      <td data-smart-ratio="{{ '%.6f'|format(it.smart_ratio) }}">{{ '%.3f'|format(it.smart_ratio) }}</td>
       {% endif %}
       {% if show_version %}
       <td>{{ it.version }}</td>
@@ -74,6 +76,7 @@
 
 <script>
   let scoreAsc = false;
+  let smartRatioAsc = false;
   function filterRows(){
     const q = document.getElementById('searchInput').value.toLowerCase();
     const rows = document.querySelectorAll('#listTable tbody tr');
@@ -96,6 +99,23 @@
       const sa = parseFloat(a.children[scoreIdx]?.getAttribute('data-score')) || 0;
       const sb = parseFloat(b.children[scoreIdx]?.getAttribute('data-score')) || 0;
       return scoreAsc ? sa - sb : sb - sa;
+    });
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+  function toggleSmartRatioSort(){
+    smartRatioAsc = !smartRatioAsc;
+    const header = document.getElementById('smartRatioHeader');
+    header.textContent = 'S. Ratio ' + (smartRatioAsc ? '↑' : '↓');
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    // Determine the column index of the S. Ratio cell (the th with id=smartRatioHeader)
+    const theadCells = Array.from(document.querySelectorAll('#listTable thead th'));
+    let smartRatioIdx = theadCells.findIndex(th => th.id === 'smartRatioHeader');
+    if (smartRatioIdx < 0) smartRatioIdx = 2; // fallback
+    rows.sort((a,b)=>{
+      const sa = parseFloat(a.children[smartRatioIdx]?.getAttribute('data-smart-ratio')) || 0;
+      const sb = parseFloat(b.children[smartRatioIdx]?.getAttribute('data-smart-ratio')) || 0;
+      return smartRatioAsc ? sa - sb : sb - sa;
     });
     rows.forEach(r=>tbody.appendChild(r));
   }
