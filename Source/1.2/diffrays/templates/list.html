@@ -20,8 +20,14 @@
       {% endif %}
       {% endif %}
       {% if show_score %}
-      <th style="cursor:pointer;" onclick="toggleScoreSort()" id="scoreHeader">Ratio ↓</th>
-      <th style="cursor:pointer;" onclick="toggleSmartRatioSort()" id="smartRatioHeader">S. Ratio ↓</th>
+      <th id="scoreHeader" style="cursor:pointer;" onclick="toggleScoreSort()" title="Normal ratio (difflib SequenceMatcher): Measures textual similarity of pseudocode, but can be noisy due to IDA’s formatting or renaming.">
+        <span>Ratio <span id="scoreArrow">↓</span></span>
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
+      </th>
+      <th id="smartRatioHeader" style="cursor:pointer;" onclick="toggleSmartRatioSort()" title="Smart ratio (with block counts): Incorporates structural changes in basic blocks, reducing false positives and better surfacing significant differences.">
+        <span>S. Ratio <span id="smartRatioArrow">↓</span></span>
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
+      </th>
       {% endif %}
       {% if show_version %}
       <th>Version</th>
@@ -87,8 +93,8 @@
   }
   function toggleScoreSort(){
     scoreAsc = !scoreAsc;
-    const header = document.getElementById('scoreHeader');
-    header.textContent = 'Ratio ' + (scoreAsc ? '↑' : '↓');
+    const arrow = document.getElementById('scoreArrow');
+    if (arrow) arrow.textContent = (scoreAsc ? '↑' : '↓');
     const tbody = document.querySelector('#listTable tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
     // Determine the column index of the Ratio cell (the th with id=scoreHeader)
@@ -104,8 +110,8 @@
   }
   function toggleSmartRatioSort(){
     smartRatioAsc = !smartRatioAsc;
-    const header = document.getElementById('smartRatioHeader');
-    header.textContent = 'S. Ratio ' + (smartRatioAsc ? '↑' : '↓');
+    const arrow = document.getElementById('smartRatioArrow');
+    if (arrow) arrow.textContent = (smartRatioAsc ? '↑' : '↓');
     const tbody = document.querySelector('#listTable tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
     // Determine the column index of the S. Ratio cell (the th with id=smartRatioHeader)

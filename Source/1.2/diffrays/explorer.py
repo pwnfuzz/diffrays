@@ -7,7 +7,26 @@ import zlib
 import ida_domain
 import traceback
 
+def print_metadata(full_meta: dict) -> None:
+    metadata = full_meta["metadata"]
 
+    print(f"\n=== Analyzing: {metadata['module']} ===")
+    print()
+    print(f"Path            : {metadata['path']}")
+    print(f"Base Address    : 0x{metadata['base_address']:X}")
+    print(f"Minimum EA      : 0x{full_meta['minimum_ea']:X}")
+    print(f"Maximum EA      : 0x{full_meta['maximum_ea']:X}")
+    print(f"Function Count  : {full_meta['function_count']}")
+    print(f"File Size       : {metadata['filesize']} bytes")
+    print(f"MD5             : {metadata['md5']}")
+    print(f"SHA256          : {metadata['sha256']}")
+    print(f"CRC32           : {metadata['crc32']}")
+    print(f"Architecture    : {metadata['architecture']}")
+    print(f"Bitness         : {metadata['bitness']}")
+    print(f"Format          : {metadata['format']}")
+    print(f"Load Time       : {metadata['load_time']}")
+    print(f"Compiler Info   : {metadata['compiler_information']}")
+    print(f"Execution Mode  : {metadata['execution_mode']}")
 
 
 def _compress_metadata(metadata: Dict[str, Any]) -> bytes:
@@ -40,6 +59,8 @@ def explore_database(binary_path: str) -> Dict[str, Any]:
             "function_count": function_count,
             "metadata": metadata_dict,
         }
+
+        print_metadata(full_meta)
 
         compressed_blob = _compress_metadata(full_meta)
 

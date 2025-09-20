@@ -40,7 +40,7 @@ def analyze_binary_collect(path: str, version: str, debug: bool = False):
                         log.debug(f"Demangled Function: {name}")
 
                 # Convert generator to list for basic block count
-                bb_count = len(list(db.functions.get_basic_blocks(func)))
+                bb_count = len(db.functions.get_flowchart(func))
                 signature = db.functions.get_signature(func)
                 pseudo = db.functions.get_pseudocode(func)
                 if not pseudo:
@@ -74,7 +74,7 @@ def analyze_binary_collect(path: str, version: str, debug: bool = False):
 
 
 def run_diff(old_path, new_path, db_path):
-    
+    print("[+] Analyzing the binaries using IDA PRO!")
     conn = init_db(db_path)
     try:
         # Explore and save OLD metadata
@@ -193,4 +193,5 @@ def run_diff(old_path, new_path, db_path):
     
     finally:
         conn.close()
-        print(f"Database written to {db_path}")
+        print()
+        print(f"[+] Database written to {db_path}")
