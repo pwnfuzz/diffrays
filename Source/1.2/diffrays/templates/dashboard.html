@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="meta">High-level overview</div>
+
+<div style="display:flex; gap:12px; flex-wrap:wrap;">
+  <div style="flex:1; min-width:200px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    <div class="meta">Total</div>
+    <div style="font-size:28px; font-weight:700;">{{ stats.total }}</div>
+  </div>
+  <div style="flex:1; min-width:200px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    <div class="meta">Changed</div>
+    <div style="font-size:28px; font-weight:700;">{{ stats.changed }}</div>
+  </div>
+  <div style="flex:1; min-width:200px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    <div class="meta">Unchanged</div>
+    <div style="font-size:28px; font-weight:700;">{{ stats.unchanged }}</div>
+  </div>
+  <div style="flex:1; min-width:200px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    <div class="meta">Unmatched (added/removed)</div>
+    <div style="font-size:28px; font-weight:700;">{{ stats.unmatched }}</div>
+  </div>
+</div>
+
+<div style="display:flex; gap:24px; align-items:flex-start; margin-top:16px; flex-wrap:wrap;">
+  <div style="min-width:260px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    <div class="meta">Change distribution</div>
+    {% set sig = counts.significant %}
+    {% set mod = counts.moderate %}
+    {% set min = counts.minor %}
+    {% set total_changed = (sig + mod + min) if (sig + mod + min) > 0 else 1 %}
+    {% set p_sig = (sig / total_changed * 360) %}
+    {% set p_mod = (mod / total_changed * 360) %}
+    {% set p_min = (min / total_changed * 360) %}
+    {% set a_sig = p_sig %}
+    {% set a_mod = p_sig + p_mod %}
+    <div id="pie" style="width:240px; height:240px; border-radius:50%; position:relative; cursor:pointer;
+                background: conic-gradient(#ff5555 0 {{ '%.2f'|format(a_sig) }}deg,
+                                           #ffb86c {{ '%.2f'|format(a_sig) }}deg {{ '%.2f'|format(a_mod) }}deg,
+                                           #f1fa8c {{ '%.2f'|format(a_mod) }}deg 360deg);
+                margin:auto;
+                border:1px solid var(--border);
+                "></div>
+    <div id="tooltip" style="position:absolute; display:none; padding:6px 8px; background:var(--chip); border:1px solid var(--border); border-radius:6px; font-size:12px; pointer-events:none;"></div>
+    <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+      <a href="{{ url_for('diffs_page') }}?level=significant" style="color:#ff5555; font-weight:700;">Significant — {{ counts.significant }}</a>
+      <a href="{{ url_for('diffs_page') }}?level=moderate" style="color:#ffb86c; font-weight:700;">Moderate — {{ counts.moderate }}</a>
+      <a href="{{ url_for('diffs_page') }}?level=minor" style="color:#f1fa8c; font-weight:700;">Minor — {{ counts.minor }}</a>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const pie = document.getElementById('pie');
+      const tip = document.getElementById('tooltip');
+      if(!pie) return;
+      const segs = [
+        { name: 'Significant', color: '#ff5555', start: 0, end: {{ '%.2f'|format(a_sig) }}, href: '{{ url_for('diffs_page') }}?level=significant', count: {{ counts.significant }} },
+        { name: 'Moderate', color: '#ffb86c', start: {{ '%.2f'|format(a_sig) }}, end: {{ '%.2f'|format(a_mod) }}, href: '{{ url_for('diffs_page') }}?level=moderate', count: {{ counts.moderate }} },
+        { name: 'Minor', color: '#f1fa8c', start: {{ '%.2f'|format(a_mod) }}, end: 360, href: '{{ url_for('diffs_page') }}?level=minor', count: {{ counts.minor }} },
+      ];
+      function posToAngle(e){
+        const rect = pie.getBoundingClientRect();
+        const cx = rect.left + rect.width/2;
+        const cy = rect.top + rect.height/2;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        let deg = Math.atan2(dy, dx) * 180/Math.PI;
+        deg = (deg + 360 + 90) % 360; // rotate to start at top
+        return deg;
+      }
+      pie.addEventListener('mousemove', (e)=>{
+        const deg = posToAngle(e);
+        const seg = segs.find(s => deg >= s.start && deg < s.end);
+        if(seg){
+          tip.style.display = 'block';
+          tip.textContent = `${seg.name}: ${seg.count}`;
+          tip.style.left = (e.pageX + 12) + 'px';
+          tip.style.top = (e.pageY + 12) + 'px';
+        } else {
+          tip.style.display = 'none';
+        }
+      });
+      pie.addEventListener('mouseleave', ()=>{ tip.style.display='none'; });
+      pie.addEventListener('click', (e)=>{
+        const deg = posToAngle(e);
+        const seg = segs.find(s => deg >= s.start && deg < s.end);
+        if(seg){ window.location.href = seg.href; }
+      });
+    })();
+  </script>
+  
+  <div style="flex:1; min-width:320px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    {% set m = meta.old.metadata.metadata if meta and meta.old and meta.old.metadata %}
+    <div class="meta">{{ (m.module if m and m.module else 'OLD') }} metadata</div>
+    {% if meta and meta.old %}
+      <div style="font-size:13px; line-height:1.5;">
+        <div><strong>Address Range</strong>: {{ ('0x%X' % meta.old.address_min)|lower }} - {{ ('0x%X' % meta.old.address_max)|lower }}</div>
+        <div><strong>Function Count</strong>: {{ meta.old.function_count }}</div>
+        {% if m %}
+        <div style="margin-top:8px; display:grid; grid-template-columns: 160px 1fr; column-gap:10px; row-gap:6px;">
+          <div style="color:var(--muted);">Architecture</div><div>{{ m.architecture }}</div>
+          <div style="color:var(--muted);">Bitness</div><div>{{ m.bitness }}</div>
+          <div style="color:var(--muted);">Format</div><div>{{ m.format }}</div>
+          <div style="color:var(--muted);">Module</div><div>{{ m.module }}</div>
+          <div style="color:var(--muted);">Path</div><div style="word-break:break-all;">{{ m.path }}</div>
+          <div style="color:var(--muted);">Base Address</div><div>{{ ('0x%X' % m.base_address)|lower }}</div>
+          <div style="color:var(--muted);">Filesize</div><div>{{ m.filesize }}</div>
+          <div style="color:var(--muted);">CRC32</div><div>{{ m.crc32 }}</div>
+          <div style="color:var(--muted);">MD5</div><div style="word-break:break-all;">{{ m.md5 }}</div>
+          <div style="color:var(--muted);">SHA256</div><div style="word-break:break-all;">{{ m.sha256 }}</div>
+          <div style="color:var(--muted);">Load Time</div><div>{{ m.load_time }}</div>
+        </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="empty">No OLD metadata available</div>
+    {% endif %}
+  </div>
+
+  <div style="flex:1; min-width:320px; background: var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:16px;">
+    {% set m = meta.new.metadata.metadata if meta and meta.new and meta.new.metadata %}
+    <div class="meta">{{ (m.module if m and m.module else 'NEW') }} metadata</div>
+    {% if meta and meta.new %}
+      <div style="font-size:13px; line-height:1.5;">
+        <div><strong>Address Range</strong>: {{ ('0x%X' % meta.new.address_min)|lower }} - {{ ('0x%X' % meta.new.address_max)|lower }}</div>
+        <div><strong>Function Count</strong>: {{ meta.new.function_count }}</div>
+        {% if m %}
+        <div style="margin-top:8px; display:grid; grid-template-columns: 160px 1fr; column-gap:10px; row-gap:6px;">
+          <div style="color:var(--muted);">Architecture</div><div>{{ m.architecture }}</div>
+          <div style="color:var(--muted);">Bitness</div><div>{{ m.bitness }}</div>
+          <div style="color:var(--muted);">Format</div><div>{{ m.format }}</div>
+          <div style="color:var(--muted);">Module</div><div>{{ m.module }}</div>
+          <div style="color:var(--muted);">Path</div><div style="word-break:break-all;">{{ m.path }}</div>
+          <div style="color:var(--muted);">Base Address</div><div>{{ ('0x%X' % m.base_address)|lower }}</div>
+          <div style="color:var(--muted);">Filesize</div><div>{{ m.filesize }}</div>
+          <div style="color:var(--muted);">CRC32</div><div>{{ m.crc32 }}</div>
+          <div style="color:var(--muted);">MD5</div><div style="word-break:break-all;">{{ m.md5 }}</div>
+          <div style="color:var(--muted);">SHA256</div><div style="word-break:break-all;">{{ m.sha256 }}</div>
+          <div style="color:var(--muted);">Load Time</div><div>{{ m.load_time }}</div>
+        </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="empty">No NEW metadata available</div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+
