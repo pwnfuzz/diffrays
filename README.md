@@ -101,12 +101,39 @@
 ### 1.1 - Lambda
 
 **To Do:**  
-- ⬜ Implement smart sorting based on blocks
-- ⬜ Additional: Download feature: HTML and PNG
+- ✅ Implement smart sorting based on blocks
 
 ---
 
-## Things to Fix
+### 1.2 - Mu
 
-- ✅ The Diffing highlights are not proper.
-- ✅ If the main site is light mode then diff should follow the same.
+**To Do:**  
+- ✅ Move all the diffing results to DB
+
+---
+
+### 1.3 - Nu
+
+**To Do:**
+- ⬜ Searching function name box is making the site slow
+- ⬜ S.Ratio calculation is wrong
+- ⬜ Opening Signature in the server makes the site slow
+- ⬜ Function count in exporting pseudocode is gone (cli)
+
+---
+
+### 1.4 - Xi
+
+- ⬜ Function Name need to be wrapped in all 3 pages
+- ⬜ Add Time in cli to show the elapsed time to complete the task
+- ⬜ Remove "[MCP] Plugin loaded, use Edit -> Plugins -> MCP (Ctrl+Alt+M) to start the server" message in terminal
+- ⬜ Implement Pagination for loading the functions better.
+ 
+---
+
+### 1.5 - Omicron
+
+
+- ⬜ Implement Auto Diffing feature
+
+---
