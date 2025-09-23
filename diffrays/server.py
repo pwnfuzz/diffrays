@@ -22,65 +22,9 @@ class FunctionInfo:
     modification_score: float = 0.0
     modification_level: str = "unchanged"
     smart_ratio: float = 0.0
-
-    def compute_modification_score(self) -> float:
-        """Compute a modification score between 0.0 (unchanged) and 1.0 (completely different)"""
-        if not self.old_text or not self.new_text:
-            return 1.0  # Missing one version means completely changed
-        
-        if self.old_text == self.new_text:
-            return 0.0
-        
-        # Use difflib to compute similarity
-        matcher = difflib.SequenceMatcher(None, self.old_text, self.new_text)
-        similarity = matcher.ratio()
-        return 1.0 - similarity
-
-    def compute_smart_ratio(self, bb_count_old: Optional[int], bb_count_new: Optional[int]) -> float:
-        """Compute smart ratio based on block count differences and text similarity"""
-        if bb_count_old is None or bb_count_new is None:
-            # If we don't have block counts, fall back to regular modification score
-            return self.compute_modification_score()
-        
-        # Calculate block-based metrics
-        delta_blocks = abs(bb_count_old - bb_count_new)
-        block_ratio = min(bb_count_old, bb_count_new) / max(bb_count_old, bb_count_new)  # [0,1]
-        
-        # Get text similarity (same as in compute_modification_score)
-        if not self.old_text or not self.new_text:
-            similarity = 0.0  # Missing one version means no similarity
-        elif self.old_text == self.new_text:
-            similarity = 1.0  # Identical text
-        else:
-            # Use difflib to compute similarity
-            matcher = difflib.SequenceMatcher(None, self.old_text, self.new_text)
-            similarity = matcher.ratio()
-        
-        # Weight logic based on structural changes
-        if delta_blocks == 0:
-            # Structural stability -> downweight textual diffs
-            change_score = (1 - similarity) * 0.2
-        else:
-            # Structural change -> emphasize block differences
-            change_score = (1 - similarity) * 0.6 + (1 - block_ratio) * 0.4
-        
-        return change_score
-
-    def determine_modification_level(self) -> str:
-        """Categorize the modification level based on score"""
-        score = self.compute_modification_score()
-        self.modification_score = score
-        
-        if score == 0.0:
-            return "unchanged"
-        elif score < 0.1:
-            return "minor"
-        elif score < 0.3:
-            return "moderate"
-        elif score < 0.6:
-            return "significant"
-        else:
-            return "major"
+    id: Optional[int] = None
+    old_meta: Optional[Dict[str, Any]] = None
+    new_meta: Optional[Dict[str, Any]] = None
 
 
 # -----------------------------
@@ -148,15 +92,15 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     # Schema detection
     # -----------------------------
     def detect_schema(conn: sqlite3.Connection) -> Dict[str, bool]:
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(functions)").fetchall()]
+        cols_functions = [r["name"] for r in conn.execute("PRAGMA table_info(functions)").fetchall()]
+        cols_diff = [r["name"] for r in conn.execute("PRAGMA table_info(diff_results)").fetchall()]
         schema = {
-            "has_wide": all(c in cols for c in ["function_name", "old_pseudocode", "new_pseudocode"]),
-            "has_tall": all(c in cols for c in ["function_name", "binary_version", "pseudocode"]),
+            "has_tall": all(c in cols_functions for c in ["function_name", "binary_version", "pseudocode"]),
+            "has_diff": all(c in cols_diff for c in [
+                "id","function_name","old_pseudocode","new_pseudocode","ratio","smart_ratio"
+            ]),
         }
-        if not schema["has_wide"] and not schema["has_tall"]:
-            app.logger.error("Unsupported schema for table 'functions'. Columns: %s", cols)
-        else:
-            app.logger.info("Detected schema: %s", "wide" if schema["has_wide"] else "tall")
+        app.logger.info("Detected tables: functions=%s, diff_results=%s", bool(cols_functions), bool(cols_diff))
         return schema
 
     def decompress(blob: Optional[bytes]) -> Optional[str]:
@@ -172,7 +116,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
     # Data access with modification scoring
     # -----------------------------
     def get_all_functions_with_scores(conn: sqlite3.Connection) -> Dict[str, List[FunctionInfo]]:
-        """Get all functions categorized by modification level"""
+        """Get all functions categorized by modification level using precomputed diff_results when available."""
         functions_by_level = {
             "significant": [],
             "moderate": [],
@@ -183,56 +127,73 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             "removed": []
         }
 
-        # For tall schema: get all function names and their versions
-        rows = conn.execute("SELECT function_name, binary_version, pseudocode, address, blocks, signature FROM functions").fetchall()
-        
-        # Build a dictionary of function_name -> (old_text, new_text)
+        schema = detect_schema(conn)
         func_dict: Dict[str, Dict[str, Any]] = {}
+
+        if schema.get("has_diff"):
+            # Use precomputed diffs for changed items
+            rows = conn.execute(
+                "SELECT id, function_name, old_pseudocode, new_pseudocode, old_address, new_address, old_blocks, new_blocks, old_signature, new_signature, ratio, smart_ratio, modification_level FROM diff_results"
+            ).fetchall()
+            for r in rows:
+                old_text = decompress(r["old_pseudocode"]) if r["old_pseudocode"] else None
+                new_text = decompress(r["new_pseudocode"]) if r["new_pseudocode"] else None
+                fi = FunctionInfo(r["function_name"], old_text, new_text)
+                fi.modification_score = 1.0 - float(r["ratio"] or 0.0)
+                fi.smart_ratio = float(r["smart_ratio"] or 0.0)
+                fi.id = r["id"]
+                fi.old_meta = {"address": r["old_address"], "blocks": r["old_blocks"], "signature": r["old_signature"]}
+                fi.new_meta = {"address": r["new_address"], "blocks": r["new_blocks"], "signature": r["new_signature"]}
+                # Use precomputed modification level from database
+                level = r["modification_level"] or "unchanged"
+                if level in functions_by_level:
+                    functions_by_level[level].append(fi)
+                else:
+                    # Fallback to significant if unknown level
+                    functions_by_level["significant"].append(fi)
+
+        # Also compute unmatched/unchanged using remaining functions table
+        rows = conn.execute("SELECT function_name, binary_version, pseudocode, address, blocks, signature FROM functions").fetchall()
         for row in rows:
             func_name = row["function_name"]
             version = row["binary_version"]
-            pseudocode = decompress(row["pseudocode"])
+            pseudocode = decompress(row["pseudocode"]) 
             address = row["address"]
             blocks = row["blocks"]
             signature = row["signature"]
-            
             if func_name not in func_dict:
                 func_dict[func_name] = {
                     "old": None, "new": None,
                     "old_meta": {"address": None, "blocks": None, "signature": None},
                     "new_meta": {"address": None, "blocks": None, "signature": None},
                 }
-            
             if version == "old":
                 func_dict[func_name]["old"] = pseudocode
                 func_dict[func_name]["old_meta"] = {"address": address, "blocks": blocks, "signature": signature}
             elif version == "new":
                 func_dict[func_name]["new"] = pseudocode
                 func_dict[func_name]["new_meta"] = {"address": address, "blocks": blocks, "signature": signature}
-        
-        for func_name, versions in func_dict.items():
-            func_info = FunctionInfo(func_name, versions["old"], versions["new"])
-            level = func_info.determine_modification_level()
-            
-            # Calculate smart ratio using block counts
-            old_blocks = versions["old_meta"].get("blocks") if versions["old_meta"] else None
-            new_blocks = versions["new_meta"].get("blocks") if versions["new_meta"] else None
-            func_info.smart_ratio = func_info.compute_smart_ratio(old_blocks, new_blocks)
-            
-            # Special cases for added/removed functions
-            if versions["old"] is None and versions["new"] is not None:
-                functions_by_level["added"].append(func_info)
-            elif versions["old"] is not None and versions["new"] is None:
-                functions_by_level["removed"].append(func_info)
-            else:
-                functions_by_level[level].append(func_info)
 
-        # Attach meta where needed for list renderers
+        for func_name, versions in func_dict.items():
+            old_txt = versions["old"]
+            new_txt = versions["new"]
+            if old_txt is None and new_txt is not None:
+                functions_by_level["added"].append(FunctionInfo(func_name, old_txt, new_txt))
+            elif old_txt is not None and new_txt is None:
+                functions_by_level["removed"].append(FunctionInfo(func_name, old_txt, new_txt))
+            elif old_txt is not None and new_txt is not None and old_txt == new_txt:
+                fi = FunctionInfo(func_name, old_txt, new_txt)
+                fi.old_meta = versions["old_meta"]
+                fi.new_meta = versions["new_meta"]
+                functions_by_level["unchanged"].append(fi)
+
+        # Attach meta for existing entries already added above
         for level, lst in functions_by_level.items():
             for f in lst:
-                meta = func_dict.get(f.name, {})
-                f.old_meta = meta.get("old_meta") if isinstance(meta, dict) else None
-                f.new_meta = meta.get("new_meta") if isinstance(meta, dict) else None
+                if not hasattr(f, 'old_meta'):
+                    meta = func_dict.get(f.name, {})
+                    f.old_meta = meta.get("old_meta") if isinstance(meta, dict) else None
+                    f.new_meta = meta.get("new_meta") if isinstance(meta, dict) else None
         return functions_by_level
 
     def fetch_binary_metadata(conn: sqlite3.Connection) -> Dict[str, Any]:
@@ -600,6 +561,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         for lvl in levels:
             for f in categories.get(lvl, []):
                 items.append({
+                    "id": getattr(f, 'id', None),
                     "name": f.name,
                     "score": f.modification_score,
                     "smart_ratio": f.smart_ratio,
@@ -609,15 +571,45 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                     "new_blocks": (f.new_meta or {}).get("blocks"),
                     "signature": (f.new_meta or {}).get("signature") or (f.old_meta or {}).get("signature"),
                 })
+
+        # Server-side search & pagination
+        q = (request.args.get("q") or "").strip()
+        q_lower = q.lower()
+        if q_lower:
+            items = [it for it in items if (it.get("name", "").lower().find(q_lower) != -1) or (str(it.get("signature") or "").lower().find(q_lower) != -1)]
+
+        per_page = 500
+        try:
+            page = int(request.args.get("page", 1))
+        except Exception:
+            page = 1
+        if page < 1:
+            page = 1
+        total_items = len(items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        # Preserve extra query params for template links
+        from urllib.parse import urlencode
+        preserved = {k: v for k, v in request.args.items() if k not in {"page"}}
+        base_query = urlencode(preserved)
+        page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
+
         return render_template(
             "list.html",
             title=(f"Diff Result — {levels[0].title()}" if filter_level else "Diff Result"),
-            items=items,
+            items=page_items,
             show_score=True,
             show_version=False,
             open_raw=False,
             current_tab='diffs',
-            show_diff_columns=True
+            show_diff_columns=True,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total_items=total_items,
+            page_qs_prefix=page_qs_prefix
         )
 
     @app.route("/unchanged")
@@ -626,22 +618,58 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         categories = get_all_functions_with_scores(conn)
         items = []
         for f in categories.get("unchanged", []):
+            # Prefer the 'old' row id for stable viewing
+            row = conn.execute(
+                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'old'",
+                (f.name,),
+            ).fetchone()
+            func_id = row["id"] if row else None
             items.append({
+                "id": None,
                 "name": f.name,
                 "version": "old",
                 "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
                 "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
                 "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+                "func_id": func_id,
             })
+        # Server-side search & pagination
+        q = (request.args.get("q") or "").strip()
+        q_lower = q.lower()
+        if q_lower:
+            items = [it for it in items if (it.get("name", "").lower().find(q_lower) != -1) or (str(it.get("signature") or "").lower().find(q_lower) != -1)]
+
+        per_page = 500
+        try:
+            page = int(request.args.get("page", 1))
+        except Exception:
+            page = 1
+        if page < 1:
+            page = 1
+        total_items = len(items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        from urllib.parse import urlencode
+        preserved = {k: v for k, v in request.args.items() if k not in {"page"}}
+        base_query = urlencode(preserved)
+        page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
+
         return render_template(
             "list.html",
             title="Unchanged",
-            items=items,
+            items=page_items,
             show_score=False,
             show_version=False,
             open_raw=True,
             current_tab='unchanged',
-            show_signature_only=True
+            show_signature_only=True,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total_items=total_items,
+            page_qs_prefix=page_qs_prefix
         )
 
     @app.route("/unmatched")
@@ -650,36 +678,103 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         categories = get_all_functions_with_scores(conn)
         items = []
         for f in categories.get("added", []):
+            row = conn.execute(
+                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'new'",
+                (f.name,),
+            ).fetchone()
+            func_id = row["id"] if row else None
+            # Prefer metadata attached to f; if missing, fallback to direct row values
+            new_meta = getattr(f, 'new_meta', None) or {}
             items.append({
+                "id": None,
                 "name": f.name,
                 "version": "new",
                 "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
-                "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
-                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+                "new_addr": new_meta.get("address") if new_meta.get("address") is not None else (row["address"] if row else None),
+                "old_blocks": (getattr(f, 'old_meta', None) or {}).get("blocks"),
+                "new_blocks": new_meta.get("blocks") if new_meta.get("blocks") is not None else (row["blocks"] if row else None),
+                "signature": new_meta.get("signature") or ((row["signature"] if row else None) or (getattr(f, 'old_meta', None) or {}).get("signature")),
+                "func_id": func_id,
             })
         for f in categories.get("removed", []):
+            row = conn.execute(
+                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'old'",
+                (f.name,),
+            ).fetchone()
+            func_id = row["id"] if row else None
+            old_meta = getattr(f, 'old_meta', None) or {}
             items.append({
+                "id": None,
                 "name": f.name,
                 "version": "old",
-                "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
+                "old_addr": old_meta.get("address") if old_meta.get("address") is not None else (row["address"] if row else None),
                 "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
-                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+                "old_blocks": old_meta.get("blocks") if old_meta.get("blocks") is not None else (row["blocks"] if row else None),
+                "new_blocks": (getattr(f, 'new_meta', None) or {}).get("blocks"),
+                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (old_meta.get("signature") or (row["signature"] if row else None)),
+                "func_id": func_id,
             })
+        # Server-side search & pagination
+        q = (request.args.get("q") or "").strip()
+        q_lower = q.lower()
+        if q_lower:
+            items = [it for it in items if (it.get("name", "").lower().find(q_lower) != -1) or (str(it.get("signature") or "").lower().find(q_lower) != -1)]
+
+        per_page = 500
+        try:
+            page = int(request.args.get("page", 1))
+        except Exception:
+            page = 1
+        if page < 1:
+            page = 1
+        total_items = len(items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        from urllib.parse import urlencode
+        preserved = {k: v for k, v in request.args.items() if k not in {"page"}}
+        base_query = urlencode(preserved)
+        page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
+
         return render_template(
             "list.html",
             title="Unmatched",
-            items=list(items),
+            items=list(page_items),
             show_score=False,
             show_version=True,
             open_raw=True,
             current_tab='unmatched',
-            show_signature_only=True
+            show_signature_only=True,
+            q=q,
+            page=page,
+            per_page=per_page,
+            total_items=total_items,
+            page_qs_prefix=page_qs_prefix
         )
 
+    @app.route("/function/<int:item_id>")
     @app.route("/function/<path:name>")
-    def function_view(name: str):
+    def function_view(item_id: int | None = None, name: str | None = None):
         conn = get_conn()
-        old_text, new_text = fetch_function_pair(conn, name)
+        # Detect whether we got item_id or name via Flask routing
+        old_text = None
+        new_text = None
+        if item_id is not None:
+            row = conn.execute(
+                "SELECT function_name, old_pseudocode, new_pseudocode FROM diff_results WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+            if row:
+                name = row["function_name"]
+                old_text = decompress(row["old_pseudocode"]) if row["old_pseudocode"] else None
+                new_text = decompress(row["new_pseudocode"]) if row["new_pseudocode"] else None
+        if name is None:
+            # Called via name-based route or id not found; fetch by name from tall schema
+            name = name or request.view_args.get('name') or (str(item_id) if item_id is not None else None)
+            if not name:
+                abort(404)
+            old_text, new_text = fetch_function_pair(conn, name)
         has_old = bool(old_text)
         has_new = bool(new_text)
 
@@ -722,15 +817,54 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         result += "</table>"
         return result
 
+    @app.route("/raw/<int:item_id>")
     @app.route("/raw/<path:name>")
-    def raw_view(name: str):
+    def raw_view(item_id: int | None = None, name: str | None = None):
         version = (request.args.get("version") or "").lower()
         if version not in {"old", "new"}:
-            return redirect(url_for("function_view", name=name))
+            # Redirect preserving whichever route was used
+            if 'name' in request.view_args or name is not None:
+                return redirect(url_for("function_view", name=(name or request.view_args.get('name'))))
+            return redirect(url_for("function_view", item_id=item_id))
         conn = get_conn()
-        old_text, new_text = fetch_function_pair(conn, name)
+        if name is not None or 'name' in request.view_args:
+            name = name or request.view_args['name']
+            old_text, new_text = fetch_function_pair(conn, name)
+        else:
+            row = conn.execute(
+                "SELECT function_name, old_pseudocode, new_pseudocode FROM diff_results WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+            if row:
+                name = row["function_name"]
+                old_text = decompress(row["old_pseudocode"]) if row["old_pseudocode"] else None
+                new_text = decompress(row["new_pseudocode"]) if row["new_pseudocode"] else None
+            else:
+                # Final fallback: not found
+                abort(404)
         text = old_text if version == "old" else new_text
         
+        return render_template(
+            "raw.html",
+            name=name,
+            version=version,
+            text=text or f"No content available for {version.upper()} version"
+        )
+
+    @app.route("/rawf/<int:func_id>")
+    def raw_view_func(func_id: int):
+        version = (request.args.get("version") or "").lower()
+        if version not in {"old", "new"}:
+            abort(400)
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT function_name, pseudocode FROM functions WHERE id = ?",
+            (func_id,),
+        ).fetchone()
+        if not row:
+            abort(404)
+        name = row["function_name"]
+        text = decompress(row["pseudocode"]) if row["pseudocode"] else None
         return render_template(
             "raw.html",
             name=name,

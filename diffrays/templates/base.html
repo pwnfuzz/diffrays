@@ -81,10 +81,35 @@
     .empty { color: var(--muted); padding: 40px; text-align: center; font-style: italic; }
     .list-table { width: 100%; border-collapse: collapse; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .list-table th, .list-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    /* Prevent horizontal overflow by wrapping long names */
+    .list-table { table-layout: fixed; }
+    .list-table th:first-child, .list-table td:first-child { 
+      word-break: break-word; 
+      overflow-wrap: anywhere; 
+      white-space: normal; 
+    }
+    .list-table td code { white-space: nowrap; }
     .list-table th { background: var(--chip); font-weight: 700; }
     .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
     .input { background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; }
     .sort-btn { cursor: pointer; user-select: none; }
+    /* Signature hover preview */
+    .sig-wrapper { position: relative; display: inline-block; }
+    .sig-view { cursor: help; color: var(--link); }
+    .sig-view:hover { color: var(--link-hover); }
+    .sig-tooltip { 
+      display: none; position: absolute; z-index: 1000; top: 100%; left: 0; 
+      background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); 
+      border-radius: 8px; padding: 10px; margin-top: 6px; max-width: 520px; max-height: 320px; 
+      overflow: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .sig-tooltip pre { margin: 0; white-space: pre-wrap; }
+    .sig-wrapper:hover .sig-tooltip { display: block; }
+    /* Pagination */
+    .pagination { display: flex; gap: 6px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--fg); text-decoration: none; }
+    .pagination a:hover { background: var(--chip); }
+    .pagination .active { background: var(--chip); font-weight: 700; }
   </style>
 </head>
 <body>

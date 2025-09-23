@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import re
+import time
 import ida_domain
 from ida_domain.database import IdaCommandOptions
 from ida_domain.names import DemangleFlags, SetNameFlags
-from diffrays.database import insert_function, insert_function_with_meta, compress_pseudo, init_db, upsert_binary_metadata
+from diffrays.database import insert_function, insert_function_with_meta, compress_pseudo, init_db, upsert_binary_metadata, compute_and_store_diffs
 from diffrays.explorer import explore_database
 from diffrays.log import log
 
@@ -64,6 +65,7 @@ def analyze_binary(db_path: str, version: str, debug: bool = False):
 
 def run_diff(old_path, new_path, db_path):
     print("[+] Analyzing the binaries using IDA PRO!")
+    start_ts = time.perf_counter()
     conn = init_db(db_path)
     try:
         # Explore and save OLD metadata
@@ -146,6 +148,14 @@ def run_diff(old_path, new_path, db_path):
         log.info(f"Decompiled {new_count} functions from new binary")
         log.info(f"Total functions processed: {old_count + new_count}")
 
+        # After exporting functions, compute and store diffs to a dedicated table
+        try:
+            log.info("Computing diffs and populating diff_results table ...")
+            compute_and_store_diffs(conn)
+            log.info("Diff computation completed")
+        except Exception as e:
+            log.error(f"Failed to compute/store diffs: {e}")
+
     except Exception as e:
         log.error(f"Critical error: {e}")
         import traceback
@@ -155,3 +165,13 @@ def run_diff(old_path, new_path, db_path):
         conn.close()
         print()
         print(f"[+] Database written to {db_path}")
+        elapsed = time.perf_counter() - start_ts
+        hours, remainder = divmod(int(elapsed), 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        if hours > 0:
+            print(f"[+] Time taken: {hours}h {minutes}m {seconds}s")
+        elif minutes > 0:
+            print(f"[+] Time taken: {minutes}m {seconds}s")
+        else:
+            print(f"[+] Time taken: {seconds}s")
