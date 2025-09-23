@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h3 style="margin: 0 0 8px 0;">{{ title }}</h3>
+<form method="get" style="margin-bottom:10px; display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+  {% if request.args.get('level') %}
+  <input type="hidden" name="level" value="{{ request.args.get('level') }}" />
+  {% endif %}
+  <input name="q" class="input" type="text" placeholder="Search…" value="{{ q or '' }}" />
+  <button class="btn" type="submit">Search</button>
+  {% if q %}
+  <a class="btn secondary" href="{{ request.path }}">Clear</a>
+  {% endif %}
+</form>
+<table class="list-table" id="listTable">
+  <thead>
+    <tr>
+      <th style="width:30%;"><span class="sort-btn" onclick="sortByName()">Function ⬍</span></th>
+      {% if show_diff_columns or show_signature_only %}
+      <th>Address (Old)</th>
+      <th>Address (New)</th>
+      {% if show_diff_columns %}
+      <th title="Basic Blocks">Blocks (Old)</th>
+      <th title="Basic Blocks">Blocks (New)</th>
+      {% endif %}
+      {% endif %}
+      {% if show_score %}
+      <th id="scoreHeader" style="cursor:pointer;" onclick="toggleScoreSort()" title="Normal ratio (difflib SequenceMatcher): Measures textual similarity of pseudocode, but can be noisy due to IDA’s formatting or renaming.">
+        <span>Ratio <span id="scoreArrow">↓</span></span>
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
+      </th>
+      <th id="smartRatioHeader" style="cursor:pointer;" onclick="toggleSmartRatioSort()" title="Smart ratio (with block counts): Incorporates structural changes in basic blocks. When counts tie, higher block counts are prioritized.">
+        <span>S. Ratio <span id="smartRatioArrow">↓</span></span>
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
+      </th>
+      {% endif %}
+      {% if show_version %}
+      <th>Version</th>
+      {% endif %}
+      {% if show_diff_columns or show_signature_only %}
+      <th>Signature</th>
+      {% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+    <tr>
+      <td>
+        {% if open_raw %}
+        {% if it.id is defined and it.id %}
+        <a href="{{ url_for('raw_view', item_id=it.id) }}?version={{ it.version }}{% if current_tab %}&from={{ current_tab }}{% endif %}">{{ it.name }}</a>
+        {% elif it.func_id is defined and it.func_id %}
+        <a href="{{ url_for('raw_view_func', func_id=it.func_id) }}?version={{ it.version }}{% if current_tab %}&from={{ current_tab }}{% endif %}">{{ it.name }}</a>
+        {% else %}
+        <a href="{{ url_for('raw_view', name=it.name) }}?version={{ it.version }}{% if current_tab %}&from={{ current_tab }}{% endif %}">{{ it.name }}</a>
+        {% endif %}
+        {% else %}
+        {% if it.id is defined and it.id %}
+        <a href="{{ url_for('function_view', item_id=it.id) }}">{{ it.name }}</a>
+        {% else %}
+        <a href="{{ url_for('function_view', name=it.name) }}">{{ it.name }}</a>
+        {% endif %}
+        {% endif %}
+      </td>
+      {% if show_diff_columns or show_signature_only %}
+      <td><code>{{ it.old_addr and ('0x%X' % it.old_addr) or '-' }}</code></td>
+      <td><code>{{ it.new_addr and ('0x%X' % it.new_addr) or '-' }}</code></td>
+      {% if show_diff_columns %}
+      <td>{{ it.old_blocks is not none and it.old_blocks or '-' }}</td>
+      <td>{{ it.new_blocks is not none and it.new_blocks or '-' }}</td>
+      {% endif %}
+      {% endif %}
+      {% if show_score %}
+      <td data-score="{{ '%.6f'|format(it.score) }}">{{ '%.3f'|format(it.score) }}</td>
+      <td data-smart-ratio="{{ '%.6f'|format(it.smart_ratio) }}" data-blocks-old="{{ it.old_blocks is not none and it.old_blocks or 0 }}" data-blocks-new="{{ it.new_blocks is not none and it.new_blocks or 0 }}">{{ '%.3f'|format(it.smart_ratio) }}</td>
+      {% endif %}
+      {% if show_version %}
+      <td>{{ it.version }}</td>
+      {% endif %}
+      {% if show_diff_columns or show_signature_only %}
+      <td>
+        {% if it.signature %}
+        <span class="sig-wrapper">
+          <span class="sig-view">View</span>
+          <div class="sig-tooltip"><pre>{{ it.signature }}</pre></div>
+        </span>
+        {% else %}-{% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% if not items %}
+  <tbody><tr><td colspan="100%" class="empty">No items.</td></tr></tbody>
+  {% endif %}
+  </table>
+
+{% set total_pages = ((total_items or 0) + (per_page or 1) - 1) // (per_page or 1) %}
+{% if (total_pages or 0) > 1 %}
+  <nav class="pagination" aria-label="Pagination">
+    {% set prev_page = (page or 1) - 1 %}
+    {% set next_page = (page or 1) + 1 %}
+    {% if (page or 1) > 1 %}
+      <a href="{{ request.path }}{{ page_qs_prefix }}page=1">« First</a>
+      <a href="{{ request.path }}{{ page_qs_prefix }}page={{ prev_page }}">‹ Prev</a>
+    {% else %}
+      <span>« First</span>
+      <span>‹ Prev</span>
+    {% endif %}
+
+    <span class="active">Page {{ page }} / {{ total_pages }}</span>
+
+    {% if (page or 1) < total_pages %}
+      <a href="{{ request.path }}{{ page_qs_prefix }}page={{ next_page }}">Next ›</a>
+      <a href="{{ request.path }}{{ page_qs_prefix }}page={{ total_pages }}">Last »</a>
+    {% else %}
+      <span>Next ›</span>
+      <span>Last »</span>
+    {% endif %}
+  </nav>
+{% endif %}
+
+<script>
+  let scoreAsc = false;
+  let smartRatioAsc = false;
+  function toggleScoreSort(){
+    scoreAsc = !scoreAsc;
+    const arrow = document.getElementById('scoreArrow');
+    if (arrow) arrow.textContent = (scoreAsc ? '↑' : '↓');
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    // Determine the column index of the Ratio cell (the th with id=scoreHeader)
+    const theadCells = Array.from(document.querySelectorAll('#listTable thead th'));
+    let scoreIdx = theadCells.findIndex(th => th.id === 'scoreHeader');
+    if (scoreIdx < 0) scoreIdx = 1; // fallback
+    rows.sort((a,b)=>{
+      const sa = parseFloat(a.children[scoreIdx]?.getAttribute('data-score')) || 0;
+      const sb = parseFloat(b.children[scoreIdx]?.getAttribute('data-score')) || 0;
+      return scoreAsc ? sa - sb : sb - sa;
+    });
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+  function toggleSmartRatioSort(){
+    smartRatioAsc = !smartRatioAsc;
+    const arrow = document.getElementById('smartRatioArrow');
+    if (arrow) arrow.textContent = (smartRatioAsc ? '↑' : '↓');
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    // Determine the column index of the S. Ratio cell (the th with id=smartRatioHeader)
+    const theadCells = Array.from(document.querySelectorAll('#listTable thead th'));
+    let smartRatioIdx = theadCells.findIndex(th => th.id === 'smartRatioHeader');
+    if (smartRatioIdx < 0) smartRatioIdx = 2; // fallback
+    rows.sort((a,b)=>{
+      const sa = parseFloat(a.children[smartRatioIdx]?.getAttribute('data-smart-ratio')) || 0;
+      const sb = parseFloat(b.children[smartRatioIdx]?.getAttribute('data-smart-ratio')) || 0;
+      // When sorting descending (default), break ties by higher total blocks first
+      if (!smartRatioAsc) {
+        if (sb !== sa) return sb - sa;
+        const ab_old = parseInt(a.children[smartRatioIdx]?.getAttribute('data-blocks-old')) || 0;
+        const ab_new = parseInt(a.children[smartRatioIdx]?.getAttribute('data-blocks-new')) || 0;
+        const bb_old = parseInt(b.children[smartRatioIdx]?.getAttribute('data-blocks-old')) || 0;
+        const bb_new = parseInt(b.children[smartRatioIdx]?.getAttribute('data-blocks-new')) || 0;
+        const atotal = ab_old + ab_new;
+        const btotal = bb_old + bb_new;
+        return btotal - atotal;
+      } else {
+        // Ascending: ratio ascending, but still prefer higher blocks when equal
+        if (sa !== sb) return sa - sb;
+        const ab_old = parseInt(a.children[smartRatioIdx]?.getAttribute('data-blocks-old')) || 0;
+        const ab_new = parseInt(a.children[smartRatioIdx]?.getAttribute('data-blocks-new')) || 0;
+        const bb_old = parseInt(b.children[smartRatioIdx]?.getAttribute('data-blocks-old')) || 0;
+        const bb_new = parseInt(b.children[smartRatioIdx]?.getAttribute('data-blocks-new')) || 0;
+        const atotal = ab_old + ab_new;
+        const btotal = bb_old + bb_new;
+        return btotal - atotal;
+      }
+    });
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+  function sortByName(){
+    const tbody = document.querySelector('#listTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a,b)=> a.children[0].innerText.localeCompare(b.children[0].innerText));
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+</script>
+{% endblock %}
+
+

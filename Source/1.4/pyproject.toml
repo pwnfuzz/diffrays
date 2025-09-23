@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffrays"
+version = "1.4"
+description = "Binary Diff Analysis Tool - Decompile, Compare, and Visualize Binary Changes"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Nikhil John Thomas", email = "nikhiljohn2104@gmail.com"},
+    {name = "Ayushman Dubey", email = "ayushmandubey611@gmail.com"}
+]
+
+dependencies = [
+    "flask>=2.0.0",
+    "tqdm>=4.60.0",
+    "ida-domain>=0.1.0"
+]
+
+[project.scripts]
+diffrays = "diffrays.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"diffrays" = [
+    "templates/*",
+    "static/images/*"
+]
+
+
+[project.urls]
+Homepage = "https://github.com/pwnfuzz/diffrays"
+Documentation = "https://github.com/pwnfuzz/diffrays#readme"
+Repository = "https://github.com/pwnfuzz/diffrays"
+Issues = "https://github.com/pwnfuzz/diffrays/issues"

@@ -115,19 +115,17 @@
 ### 1.3 - Nu
 
 **To Do:**
-- ⬜ Searching function name box is making the site slow
-- ⬜ S.Ratio calculation is wrong
-- ⬜ Opening Signature in the server makes the site slow
-- ⬜ Function count in exporting pseudocode is gone (cli)
+- ✅ Searching function name box is making the site slow
+- ✅ S.Ratio calculation is wrong
+- ✅ Opening Signature in the server makes the site slow
 
 ---
 
 ### 1.4 - Xi
 
-- ⬜ Function Name need to be wrapped in all 3 pages
-- ⬜ Add Time in cli to show the elapsed time to complete the task
-- ⬜ Remove "[MCP] Plugin loaded, use Edit -> Plugins -> MCP (Ctrl+Alt+M) to start the server" message in terminal
-- ⬜ Implement Pagination for loading the functions better.
+- ✅ Function Name need to be wrapped in all 3 pages
+- ✅ Add Time in cli to show the elapsed time to complete the task
+- ✅ Implement Pagination for loading the functions better.
  
 ---
 

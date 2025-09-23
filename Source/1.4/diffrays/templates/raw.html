@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="margin: 20px;">
+  {% set back = request.args.get('from') %}
+  {% if back == 'unchanged' %}
+    <a href="{{ url_for('unchanged_page') }}" class="btn secondary" style="margin-bottom: 12px;">← Back</a>
+  {% elif back == 'unmatched' %}
+    <a href="{{ url_for('unmatched_page') }}" class="btn secondary" style="margin-bottom: 12px;">← Back</a>
+  {% elif back == 'diffs' %}
+    <a href="{{ url_for('diffs_page') }}" class="btn secondary" style="margin-bottom: 12px;">← Back</a>
+  {% else %}
+    <a href="{{ url_for('dashboard') }}" class="btn secondary" style="margin-bottom: 12px;">← Back</a>
+  {% endif %}
+  
+  <div style="background: #44475a; padding: 16px; border-radius: 8px; margin-top: 12px; margin-bottom: 20px;">
+    <strong>{{ name }}</strong> — {{ version|upper }} version
+  </div>
+  
+  {% if text %}
+  <pre style="background: #44475a; padding: 20px; border-radius: 8px; overflow-x: auto; color: #f8f8f2; border: 1px solid #6272a4; margin-top: 12px;">{{ text }}</pre>
+  {% else %}
+  <div class="empty">No content available for {{ version|upper }} version</div>
+  {% endif %}
+</div>
+{% endblock %}

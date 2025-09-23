@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>diffrays server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #282a36;
+      --bg-elev: #383a59;
+      --fg: #f8f8f2;
+      --muted: #6272a4;
+      --accent: #8be9fd;
+      --accent-2: #50fa7b;
+      --border: #6272a4;
+      --chip: #44475a;
+      --link: #8be9fd;
+      --link-hover: #50fa7b;
+    }
+    [data-theme="light"] {
+      --bg: #f8f9fa;
+      --bg-elev: #ffffff;
+      --fg: #212529;
+      --muted: #6c757d;
+      --accent: #0d6efd;
+      --accent-2: #198754;
+      --border: #dee2e6;
+      --chip: #e9ecef;
+      --link: #0d6efd;
+      --link-hover: #198754;
+    }
+    body {
+      font-family: 'Fira Code', Menlo, Monaco, Consolas, monospace;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 12px 16px;
+      background: var(--chip);
+      color: var(--fg);
+      border-bottom: 2px solid var(--muted);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .nav a {
+      color: var(--link);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .nav a.active {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+    }
+    .nav a:hover { color: var(--link-hover); }
+    .logo-container { display: flex; align-items: center; }
+    .logo { height: 72px; width: auto; margin-right: 8px; }
+    .right-controls { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.secondary { background: var(--chip); color: var(--fg); border: 1px solid var(--border); }
+    main { padding: 20px; }
+    a { text-decoration: none; color: var(--link); }
+    a:hover { color: var(--link-hover); }
+    .meta { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+    .empty { color: var(--muted); padding: 40px; text-align: center; font-style: italic; }
+    .list-table { width: 100%; border-collapse: collapse; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .list-table th, .list-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    /* Prevent horizontal overflow by wrapping long names */
+    .list-table { table-layout: fixed; }
+    .list-table th:first-child, .list-table td:first-child { 
+      word-break: break-word; 
+      overflow-wrap: anywhere; 
+      white-space: normal; 
+    }
+    .list-table td code { white-space: nowrap; }
+    .list-table th { background: var(--chip); font-weight: 700; }
+    .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .input { background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; }
+    .sort-btn { cursor: pointer; user-select: none; }
+    /* Signature hover preview */
+    .sig-wrapper { position: relative; display: inline-block; }
+    .sig-view { cursor: help; color: var(--link); }
+    .sig-view:hover { color: var(--link-hover); }
+    .sig-tooltip { 
+      display: none; position: absolute; z-index: 1000; top: 100%; left: 0; 
+      background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); 
+      border-radius: 8px; padding: 10px; margin-top: 6px; max-width: 520px; max-height: 320px; 
+      overflow: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .sig-tooltip pre { margin: 0; white-space: pre-wrap; }
+    .sig-wrapper:hover .sig-tooltip { display: block; }
+    /* Pagination */
+    .pagination { display: flex; gap: 6px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--fg); text-decoration: none; }
+    .pagination a:hover { background: var(--chip); }
+    .pagination .active { background: var(--chip); font-weight: 700; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="logo-container">
+      <img src="{{ url_for('static', filename='images/logo-dark.png') }}" alt="DiffRays Logo" class="logo" id="logoImg" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+      <strong style="display:none;">diffrays</strong>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="{{ url_for('diffs_page') }}" class="{% if request.endpoint == 'diffs_page' %}active{% endif %}">Diff Result</a>
+    <a href="{{ url_for('unchanged_page') }}" class="{% if request.endpoint == 'unchanged_page' %}active{% endif %}">Unchanged</a>
+    <a href="{{ url_for('unmatched_page') }}" class="{% if request.endpoint == 'unmatched_page' %}active{% endif %}">Unmatched</a>
+  </div>
+  <div class="right-controls">
+    <button id="themeToggle" class="btn" aria-label="Toggle theme">🌙</button>
+    <a href="https://github.com/pwnfuzz/DiffRays" target="_blank" class="btn secondary" aria-label="GitHub Repository">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display: inline-block; vertical-align: middle;">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+    </a>
+  </div>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<script>
+  (function(){
+    const key = 'diffrays-theme';
+    
+    function updateTheme() {
+      const saved = localStorage.getItem(key);
+      const isLight = saved === 'light';
+      document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+      
+      // Update button text
+      const btn = document.getElementById('themeToggle');
+      if (btn) {
+        btn.textContent = isLight ? '☀️' : '🌙';
+      }
+      
+      // Update logo based on theme
+      const logoImg = document.getElementById('logoImg');
+      if (logoImg) {
+        const currentTheme = isLight ? 'light' : 'dark';
+        logoImg.src = logoImg.src.replace(/logo-(dark|light)\.png/, `logo-${currentTheme}.png`);
+      }
+    }
+    
+    // Initial theme setup
+    updateTheme();
+    
+    // Theme toggle handler
+    document.getElementById('themeToggle').addEventListener('click', function(){
+      const light = document.documentElement.getAttribute('data-theme') === 'light';
+      const newTheme = light ? 'dark' : 'light';
+      localStorage.setItem(key, newTheme);
+      updateTheme();
+    });
+    
+    // Check for theme changes when page becomes visible (e.g., when navigating back)
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        updateTheme();
+      }
+    });
+    
+    // Also check on focus (for cases where visibilitychange might not fire)
+    window.addEventListener('focus', updateTheme);
+  })();
+</script>
+</body>
+</html>
