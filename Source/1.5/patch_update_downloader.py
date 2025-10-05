@@ -9,7 +9,7 @@ import os
 # ===== GLOBAL VARIABLES =====
 FILENAME = "clfs.sys"
 DBNAME = "clfs.json.gz"  # Will be downloaded from winbindex
-WINDOWS_VERSION = "11-22H2"
+WINDOWS_VERSION = "11-23H2"
 PATCH_MONTH = "2025-09"  # Format: YYYY-MM
 
 # ===== CONSTANTS =====

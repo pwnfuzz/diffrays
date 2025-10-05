@@ -1,30 +1,181 @@
+#!/usr/bin/env python3
+
+import requests
 import json
 import gzip
-import requests
+import re
+import sys
+import argparse
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import os
-
-# ===== GLOBAL VARIABLES =====
-FILENAME = "ksthunk.sys"
-DBNAME = "ksthunk.json.gz"  # Will be downloaded from winbindex
-WINDOWS_VERSION = "11-24H2"
-PATCH_MONTH = "2025-08"  # Format: YYYY-MM
 
 # ===== CONSTANTS =====
 WINBINDEX_BASE_URL = "https://winbindex.m417z.com/data/by_filename_compressed"
 MSDL_BASE_URL = "https://msdl.microsoft.com/download/symbols"
+DEFAULT_WINDOWS_VERSION = "11-24H2"
 
-def download_database() -> str:
+def get_component_mapping() -> List[Dict[str, str]]:
+    """Returns the component mapping as a list"""
+    return [
+        {"name": "Windows Common Log File System Driver", "file": "clfs.sys"},
+        {"name": "Windows Composite Image File System", "file": "cimfs.sys"},
+        {"name": "Windows DWM Core Library", "file": "dwmcore.dll"},
+        {"name": "Windows Telephony Service", "file": "tapisrv.dll"},
+        {"name": "Windows Kernel", "file": "ntoskrnl.exe"},
+        {"name": "Windows USB Print Driver", "file": "usbprint.sys"},
+        {"name": "Windows upnphost.dll", "file": "upnphost.dll"},
+        {"name": "Windows Internet Information Services", "file": "http.sys"},
+        {"name": "Microsoft Streaming Service", "file": "mskssrv.sys"},
+        {"name": "Windows Resilient File System (ReFS)", "file": "refs.sys"},
+        {"name": "Windows Win32 Kernel Subsystem", "file": "win32kfull.sys"},
+        {"name": "Windows TCP/IP", "file": "tcpip.sys"},
+        {"name": "Kernel Streaming WOW Thunk Service Driver", "file": "ksthunk.sys"},
+        {"name": "Windows exFAT File System", "file": "exfat.sys"},
+        {"name": "Windows Fast FAT Driver", "file": "fastfat.sys"},
+        {"name": "Windows USB Video Driver", "file": "usbvideo.sys"},
+        {"name": "Microsoft Management Console", "file": "mmc.exe"},
+        {"name": "Microsoft Local Security Authority Server (lsasrv)", "file": "lsasrv.dll"},
+        {"name": "Windows Message Queuing", "file": "mqsvc.exe"},
+        {"name": "Windows Kerberos", "file": "kerberos.dll"},
+        {"name": "Windows Ancillary Function Driver for WinSock", "file": "afd.sys"},
+        {"name": "Winlogon", "file": "winlogon.exe"},
+        {"name": "Windows Hyper-V NT Kernel Integration VSP", "file": "vkrnlintvsp.sys"},
+        {"name": "Windows Hyper-V", "file": "hvix64.exe"},
+        {"name": "Windows Hyper-V", "file": "hvax64.exe"},
+        {"name": "Windows Hyper-V", "file": "hvloader.dll"},
+        {"name": "Windows Hyper-V", "file": "kdhvcom.dll"},
+        {"name": "Windows Power Dependency Coordinator", "file": "pdc.sys"},
+        {"name": "Windows Cryptographic Services", "file": "cryptsvc.dll"},
+        {"name": "Windows Remote Desktop Services", "file": "termsrv.dll"},
+        {"name": "Windows BitLocker", "file": "fvevol.sys"},
+        {"name": "Windows Core Messaging", "file": "CoreMessaging.dll"},
+        {"name": "Windows Boot Manager", "file": "bootmgfw.efi"},
+        {"name": "Windows Boot Loader", "file": "winload.exe"},
+        {"name": "Windows Task Scheduler", "file": "WPTaskScheduler.dll"},
+        {"name": "Windows Secure Channel", "file": "schannel.dll"},
+        {"name": "Windows Local Session Manager (LSM)", "file": "lsm.dll"},
+        {"name": "Windows LDAP - Lightweight Directory Access Protocol", "file": "Wldap32.dll"},
+        {"name": "Web Threat Defense (WTD.sys)", "file": "wtd.sys"},
+        {"name": "Windows Storage Port Driver", "file": "storport.sys"},
+        {"name": "Windows NTFS", "file": "ntfs.sys"},
+        {"name": "Windows Netlogon", "file":"netlogon.dll"},
+        {"name": "Windows Remote Access Connection Manager", "file": "rasman.dll"},
+        {"name": "Windows Local Security Authority Subsystem Service (LSASS)", "file": "lsass.exe"},
+        {"name": "Windows DHCP Server", "file": "dhcpssvc.dll"}
+    ]
+
+def validate_cve_format(cve_id: str) -> bool:
+    """Validate CVE ID format (CVE-YYYY-NNNNN+)"""
+    pattern = r'^CVE-\d{4}-\d{4,}$'
+    return bool(re.match(pattern, cve_id.upper()))
+
+def fetch_cve_data(cve_id: str) -> Optional[Dict]:
+    """Fetch CVE data from Microsoft Security Response Center API"""
+    base_url = "https://api.msrc.microsoft.com/sug/v2.0/en-US/vulnerability"
+    url = f"{base_url}/{cve_id}"
+    
+    headers = {
+        'User-Agent': 'CVE-Extractor/1.0',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            print(f"CVE {cve_id} not found in Microsoft database")
+            return None
+        else:
+            print(f"Error fetching data: HTTP {response.status_code}")
+            print(f"Response: {response.text[:500]}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse JSON response: {e}")
+        return None
+
+def extract_cve_info(data: Dict) -> Dict:
+    """Extract required information from CVE data"""
+    extracted_info = {
+        'cve_title': data.get('cveTitle', 'N/A'),
+        'description': data.get('description', 'N/A'),
+        'unformatted_description': data.get('unformattedDescription', 'N/A'),
+        'tag': data.get('tag', 'N/A'),
+        'release_number': data.get('releaseNumber', 'N/A'),
+        'articles': []
+    }
+    
+    # Extract articles information
+    articles = data.get('articles', [])
+    for article in articles:
+        article_info = {
+            'title': article.get('title', 'N/A'),
+            'description': article.get('description', 'N/A')
+        }
+        extracted_info['articles'].append(article_info)
+    
+    return extracted_info
+
+def find_matching_components(cve_info: Dict, component_mapping: List[Dict]) -> List[Dict]:
+    """Find matching components based on exact CVE tag match only"""
+    matches = []
+    
+    # Get the tag field only
+    tag = cve_info.get('tag', '')
+    
+    if not tag or tag == 'N/A':
+        return matches
+    
+    # Remove "Role: " prefix if present
+    if tag.startswith("Role: "):
+        tag = tag[6:]  # Remove "Role: "
+    
+    # Check for exact matches only
+    for component in component_mapping:
+        if tag == component["name"]:
+            matches.append({
+                'name': component["name"],
+                'file': component["file"]
+            })
+    
+    return matches
+
+def release_number_to_patch_month(release_number: str) -> Optional[str]:
+    """Convert release number (e.g., '2025-Sep') to patch month format (e.g., '2025-09')"""
+    if not release_number or release_number == 'N/A':
+        return None
+    
+    month_map = {
+        'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+        'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+        'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+    }
+    
+    try:
+        year, month_name = release_number.split('-')
+        month_num = month_map.get(month_name)
+        if month_num:
+            return f"{year}-{month_num}"
+    except ValueError:
+        pass
+    
+    return None
+
+def download_database(filename: str, dbname: str) -> str:
     """
     Download the JSON.gz database from winbindex for the specified filename.
     
     Returns:
         Path to the downloaded file
     """
-    url = f"{WINBINDEX_BASE_URL}/{FILENAME}.json.gz"
-    local_path = DBNAME
+    url = f"{WINBINDEX_BASE_URL}/{filename}.json.gz"
     
     print(f"Downloading database from: {url}")
     
@@ -32,13 +183,16 @@ def download_database() -> str:
         response = requests.get(url, stream=True)
         response.raise_for_status()
         
-        with open(local_path, 'wb') as f:
+        with open(dbname, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         
-        print(f"Database saved as: {local_path}")
-        return local_path
+        print(f"Database saved as: {dbname}")
+        return dbname
     except requests.RequestException as e:
+        if response.status_code == 404:
+            raise Exception(f"Database not found for {filename}. The file may not be available in winbindex.\n"
+                          f"Try running with a different filename or check if '{filename}' is correct.")
         raise Exception(f"Failed to download database: {e}")
 
 def is_near_patch_tuesday(date_str: str, target_month: str, tolerance_days: int = 2) -> bool:
@@ -128,7 +282,7 @@ def is_version_applicable(kb_data: Dict, target_version: str, current_version: s
     
     return target_version in other_versions
 
-def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
+def get_target_versions(db_path: str, windows_version: str, patch_month: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     """
     Get the target patch version and vulnerable version (previous month).
     Prioritizes Patch Tuesday releases, falls back to most recent after Patch Tuesday.
@@ -136,6 +290,8 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     
     Args:
         db_path: Path to the JSON.gz database file
+        windows_version: Target Windows version
+        patch_month: Target patch month in YYYY-MM format
         
     Returns:
         Tuple of (patch_version, vulnerable_version) dictionaries or None if not found
@@ -150,7 +306,7 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     vulnerable_all = {}
     
     # Parse target month
-    target_year, target_month = map(int, PATCH_MONTH.split('-'))
+    target_year, target_month = map(int, patch_month.split('-'))
     
     # Calculate previous month for vulnerable version
     if target_month == 1:
@@ -161,7 +317,7 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     prev_month_str = f"{prev_year:04d}-{prev_month:02d}"
     prev_patch_tuesday = get_patch_tuesday_date(prev_year, prev_month)
     
-    print(f"Looking for patch version in: {PATCH_MONTH}")
+    print(f"Looking for patch version in: {patch_month}")
     print(f"Looking for vulnerable version in: {prev_month_str}")
     print(f"Previous month Patch Tuesday: {prev_patch_tuesday.strftime('%Y-%m-%d')}")
     
@@ -177,9 +333,9 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
         
         if timestamp and virtual_size:
             # First pass: Look for direct matches
-            if WINDOWS_VERSION in win_versions:
+            if windows_version in win_versions:
                 direct_matches_found = True
-                version_data = win_versions[WINDOWS_VERSION]
+                version_data = win_versions[windows_version]
                 
                 for kb_id, kb_data in version_data.items():
                     update_info = kb_data.get("updateInfo", {})
@@ -206,11 +362,11 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
                         "kb_id": kb_id,
                         "release_version": release_version,
                         "update_url": update_info.get("updateUrl", ""),
-                        "source": f"direct ({WINDOWS_VERSION})"
+                        "source": f"direct ({windows_version})"
                     }
 
                     # Process this entry (same logic as before)
-                    if is_near_patch_tuesday(release_date, PATCH_MONTH):
+                    if is_near_patch_tuesday(release_date, patch_month):
                         if release_version not in patch_versions or release_date > patch_versions[release_version]["release_date"]:
                             patch_versions[release_version] = version_entry
                         
@@ -234,7 +390,7 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
             # Only do this if we haven't found direct matches or if we still need more versions
             for current_version, version_data in win_versions.items():
                 for kb_id, kb_data in version_data.items():
-                    if is_version_applicable(kb_data, WINDOWS_VERSION, current_version) and current_version != WINDOWS_VERSION:
+                    if is_version_applicable(kb_data, windows_version, current_version) and current_version != windows_version:
                         fallback_matches_found = True
                         update_info = kb_data.get("updateInfo", {})
                         release_date = update_info.get("releaseDate")
@@ -260,11 +416,11 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
                             "kb_id": kb_id,
                             "release_version": release_version,
                             "update_url": update_info.get("updateUrl", ""),
-                            "source": f"fallback ({current_version} -> {WINDOWS_VERSION})"
+                            "source": f"fallback ({current_version} -> {windows_version})"
                         }
 
                         # Process this entry (same logic as before)
-                        if is_near_patch_tuesday(release_date, PATCH_MONTH):
+                        if is_near_patch_tuesday(release_date, patch_month):
                             if release_version not in patch_versions or release_date > patch_versions[release_version]["release_date"]:
                                 patch_versions[release_version] = version_entry
                             
@@ -289,11 +445,11 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     fallback_patch_count = len([v for v in patch_versions.values() if v["source"].startswith("fallback")])
     
     if direct_matches_found:
-        print(f"✅ Found {direct_patch_count} direct patch matches for {WINDOWS_VERSION}")
+        print(f"✅ Found {direct_patch_count} direct patch matches for {windows_version}")
     if fallback_matches_found:
         print(f"✅ Found {fallback_patch_count} fallback patch matches via otherWindowsVersions")
     if not direct_matches_found and not fallback_matches_found:
-        print(f"❌ No matches found for {WINDOWS_VERSION} (neither direct nor fallback)")
+        print(f"❌ No matches found for {windows_version} (neither direct nor fallback)")
     
     # Helper function to prioritize direct matches over fallback matches
     def select_best_version(versions_dict):
@@ -340,13 +496,14 @@ def get_target_versions(db_path: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     
     return patch_version, vulnerable_version
 
-def download_symbol_file(version_info: Dict[str, Any], version_type: str) -> str:
+def download_symbol_file(version_info: Dict[str, any], version_type: str, filename: str) -> str:
     """
     Download a symbol file from Microsoft Symbol Server.
     
     Args:
         version_info: Dictionary containing version information
         version_type: Either "patch" or "vulnerable" for naming
+        filename: The filename to download
         
     Returns:
         Path to the downloaded file
@@ -360,11 +517,11 @@ def download_symbol_file(version_info: Dict[str, Any], version_type: str) -> str
     size_hex = f"{virtual_size:X}"
     
     # Build URL
-    url = f"{MSDL_BASE_URL}/{FILENAME}/{timestamp_hex}{size_hex}/{FILENAME}"
+    url = f"{MSDL_BASE_URL}/{filename}/{timestamp_hex}{size_hex}/{filename}"
     
     # Create filename with release version
-    file_ext = Path(FILENAME).suffix
-    file_stem = Path(FILENAME).stem
+    file_ext = Path(filename).suffix
+    file_stem = Path(filename).stem
     local_filename = f"{file_stem}_{release_version}{file_ext}"
     
     print(f"Downloading {version_type} version from: {url}")
@@ -386,28 +543,120 @@ def download_symbol_file(version_info: Dict[str, Any], version_type: str) -> str
         raise Exception(f"Failed to download {version_type} version: {e}")
 
 def main():
-    """
-    Main function to orchestrate the entire process.
-    """
-    print("=" * 60)
+    """Main function"""
+    parser = argparse.ArgumentParser(description="CVE Component Downloader - Find and download Windows components for CVEs")
+    
+    # Mutually exclusive group for CVE or manual input
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("cve_id", nargs='?', help="CVE ID (e.g., CVE-2025-54099)")
+    input_group.add_argument("-f", "--filename", help="Component filename (e.g., afd.sys)")
+    
+    parser.add_argument("-m", "--patch-month", help="Patch month in YYYY-MM format (e.g., 2025-09)")
+    parser.add_argument("-w", "--windows-version", default=DEFAULT_WINDOWS_VERSION, 
+                       help=f"Windows version (default: {DEFAULT_WINDOWS_VERSION})")
+    parser.add_argument("-d", "--dbname", help="Database filename (e.g., afd.json.gz)")
+    
+    args = parser.parse_args()
+    
+    filename = None
+    patch_month = None
+    dbname = None
+    
+    if args.cve_id:
+        # CVE mode
+        cve_id = args.cve_id.strip().upper()
+        
+        if not validate_cve_format(cve_id):
+            print("❌ Invalid CVE format. Please use format: CVE-YYYY-NNNNN")
+            sys.exit(1)
+        
+        print("=" * 60)
+        print("CVE COMPONENT FINDER")
+        print("=" * 60)
+        print(f"CVE ID: {cve_id}")
+        print("-" * 60)
+        
+        # Fetch CVE data
+        cve_data = fetch_cve_data(cve_id)
+        
+        if not cve_data:
+            print("❌ Failed to retrieve CVE data.")
+            sys.exit(1)
+        
+        # Extract information
+        cve_info = extract_cve_info(cve_data)
+        
+        # Display CVE info
+        print(f"Release Number: {cve_info['release_number']}")
+        
+        # Find matching components
+        component_mapping = get_component_mapping()
+        matching_components = find_matching_components(cve_info, component_mapping)
+        
+        if not matching_components:
+            print("❌ No matching components found.")
+            print("\nPlease run with manual input:")
+            print(f"python3 {sys.argv[0]} -f <filename> -m <YYYY-MM>")
+            sys.exit(1)
+        
+        # Display matching components
+        for component in matching_components:
+            print(f"{component['name']} ({component['file']})")
+        
+        # Use first matching component
+        filename = matching_components[0]['file']
+        
+        # Convert release number to patch month
+        patch_month = release_number_to_patch_month(cve_info['release_number'])
+        if not patch_month:
+            print(f"❌ Could not parse patch month from release number: {cve_info['release_number']}")
+            sys.exit(1)
+    
+    else:
+        # Manual mode
+        if not args.filename:
+            print("❌ Filename is required in manual mode")
+            sys.exit(1)
+        
+        if not args.patch_month:
+            print("❌ Patch month is required in manual mode")
+            sys.exit(1)
+        
+        filename = args.filename
+        patch_month = args.patch_month
+        
+        # Validate patch month format
+        if not re.match(r'^\d{4}-\d{2}$', patch_month):
+            print("❌ Invalid patch month format. Please use YYYY-MM")
+            sys.exit(1)
+    
+    # Set dbname
+    if args.dbname:
+        dbname = args.dbname
+    else:
+        file_stem = Path(filename).stem
+        dbname = f"{file_stem}.json.gz"
+    
+    print("\n" + "=" * 60)
     print("SYMBOL FILE DOWNLOADER")
     print("=" * 60)
-    print(f"Filename: {FILENAME}")
-    print(f"Windows Version: {WINDOWS_VERSION}")
-    print(f"Target Patch Month: {PATCH_MONTH}")
+    print(f"Filename: {filename}")
+    print(f"Database: {dbname}")
+    print(f"Windows Version: {args.windows_version}")
+    print(f"Target Patch Month: {patch_month}")
     print("-" * 60)
     
     try:
         # Step 1: Download database
-        db_path = download_database()
+        db_path = download_database(filename, dbname)
         print()
         
         # Step 2: Find target versions
         print("Analyzing database for target versions...")
-        patch_version, vulnerable_version = get_target_versions(db_path)
+        patch_version, vulnerable_version = get_target_versions(db_path, args.windows_version, patch_month)
         
         if not patch_version:
-            print(f"❌ No patch version found for {PATCH_MONTH}")
+            print(f"❌ No patch version found for {patch_month}")
             return
         
         if not vulnerable_version:
@@ -420,9 +669,9 @@ def main():
         
         # Step 3: Download both versions
         print("Downloading symbol files...")
-        patch_file = download_symbol_file(patch_version, "patch")
+        patch_file = download_symbol_file(patch_version, "patch", filename)
         print()
-        vulnerable_file = download_symbol_file(vulnerable_version, "vulnerable")
+        vulnerable_file = download_symbol_file(vulnerable_version, "vulnerable", filename)
         
         print()
         print("=" * 60)
@@ -435,10 +684,11 @@ def main():
         print(f"❌ Error: {e}")
         return
 
-    file_path = Path(DBNAME)
-
-    if file_path.exists():
-        file_path.unlink()
+    finally:
+        # Clean up database file
+        if dbname and Path(dbname).exists():
+            Path(dbname).unlink()
+            print(f"🧹 Cleaned up database file: {dbname}")
 
 if __name__ == "__main__":
     main()
