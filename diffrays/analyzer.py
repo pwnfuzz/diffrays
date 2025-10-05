@@ -64,7 +64,6 @@ def analyze_binary(db_path: str, version: str, debug: bool = False):
 
 
 def run_diff(old_path, new_path, db_path):
-    print("[+] Analyzing the binaries using IDA PRO!")
     start_ts = time.perf_counter()
     conn = init_db(db_path)
     try:
@@ -103,7 +102,7 @@ def run_diff(old_path, new_path, db_path):
                 insert_function(conn, "old", name, compressed)
             old_count += 1
             
-            print(f"[*] Exporting {old_path} : {old_count}/{old_total}", end="\r", flush=True)
+            print(f"[*] Exporting functions from {old_path} : {old_count}/{old_total}", end="\r", flush=True)
 
         log.info(f"Decompiled {old_count} functions from old binary")
         
@@ -141,7 +140,7 @@ def run_diff(old_path, new_path, db_path):
             except Exception:
                 insert_function(conn, "new", name, compressed)
             new_count += 1
-            print(f"[*] Exporting {new_path} : {new_count}/{new_total}", end="\r", flush=True)
+            print(f"[*] Exporting functions from {new_path} : {new_count}/{new_total}", end="\r", flush=True)
 
         print()
         print("-"*100)
