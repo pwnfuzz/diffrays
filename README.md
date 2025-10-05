@@ -23,6 +23,7 @@ DiffRays is a research-oriented tool for **binary patch diffing**, designed to a
 - 🧩 **IDA Pro Integration**: Uses IDA Pro and the IDA Domain API for accurate pseudocode extraction.  
 - 📂 **SQLite Output**: Stores results in a SQLite database for easy reuse and analysis.  
 - 🌐 **Web Interface**: Built-in server mode to browse, search, and visualize diff results interactively.  
+- 🤖 **AutoDiff**: Automatically fetches vulnerable and patched binaries (via CVE, file, or month) and runs the diff end-to-end.
 - 📊 **Research-Ready**: Designed to support vulnerability research and exploit development workflows.  
 
 ---
@@ -74,21 +75,26 @@ ______ _  __  ________
 | |/ /| | | | | | |\ \ (_| | |_| \__ \
 |___/ |_|_| |_| \_| \_\__,_|\__, |___/
                              __/ |
-                            |___/      v1.0 Kappa
+                            |___/      v1.5 Omicron
 
-usage: diffrays [-h] {diff,server} ...
+usage: diffrays [-h] {diff,server,autodiff} ...
 
 Binary Diff Analysis Tool - Decompile, Compare, and Visualize Binary Changes
 
 positional arguments:
-  {diff,server}  Command to execute
-    diff         Analyze two binaries and generate differential database 
-    server       Launch web server to view diff results
+  {diff,server,autodiff}
+                        Command to execute
+    diff                Analyze two binaries and generate differential database
+    server              Launch web server to view diff results
+    autodiff            Auto-download binaries (via CVE or manual input) and run diff
 
 options:
-  -h, --help     show this help message and exit
+  -h, --help            show this help message and exit
 
 Examples:
+  diffrays autodiff --cve CVE-2025-29824
+  diffrays autodiff -f clfs.sys -m 2025-09
+  diffrays autodiff -f clfs.sys -m 2025-09 -w 2023-H2
   diffrays diff old_binary.exe new_binary.exe
   diffrays diff old.so new.so -o custom_name.sqlite --log
   diffrays server --db-path result_old_new_20231201.sqlite --debug
@@ -97,22 +103,53 @@ For more information, visit: https://github.com/pwnfuzz/diffrays
 
 ```
 
-1. **Run Patch Diffing in IDA**  
-Load your binaries in IDA and run DiffRays to generate diff results:  
-    ```bash
-    python diffrays.py diff <path_to_old_binary> <path_to_new_binary>
-    ```
+### 🔄 AutoDiff – Automatic Binary Collection & Diffing
 
-2. **Start the DiffRays Server**  
-Once you have a .sqlite file, launch the web interface to explore the diffs:  
-    ```bash
+The autodiff command streamlines patch analysis by automatically fetching binaries (via CVE or manual parameters) and running a diff without manual downloads.
+
+**Example 1: Run by CVE**
+
+```sh
+    diffrays autodiff --cve CVE-2025-29824
+```
+This will:
+    - Automatically locate vulnerable and patched binaries related to the CVE with the help of [Winbindex](https://winbindex.m417z.com/).
+    - Run the diff engine.
+    - Generate a results database.
+
+**Example 2: Run by File + Month**
+
+```sh
+    diffrays autodiff -f clfs.sys -m 2025-09
+```
+
+This will:
+    - Download `clfs.sys` from the September 2025 update.
+    - Locate its prior version and run a diff automatically.
+    - Provide a fallback when `--cve` doesn’t correctly identify the vulnerable component (which can happen if the CVE affects multiple binaries or metadata is incomplete).
+
+
+### ⚙️ Manual Binary Diffing
+
+1. Run Patch Diffing in IDA
+
+```sh
+    python diffrays.py diff old_binary.exe new_binary.exe
+```
+
+2. Start the DiffRays Server
+
+```sh
     python diffrays.py server --db-path diff_results.sqlite
-    ```
-    Open your browser at http://localhost:5555 to view results.
+```
+
+3. Open your browser at http://localhost:5555 to view results.
 
 ---
 
-## 🔬 Example Workflow - Diffing CVE-2025-29824
+## 🔬 Example Workflows
+
+### Manual Diffing CVE-2025-29824
 
 1. **Collect target binaries**  
    - CVE-2025-1246 affects the **Common Log File System driver (`Clfs.sys`)**.  
@@ -149,6 +186,23 @@ Once you have a .sqlite file, launch the web interface to explore the diffs:
 	- Clicking on a function displays the detailed diff result.
 	<br>
 	<img src="/diffrays/static/sample/result.png">
+
+
+### Automatic Diffing - CVE-2025-53149
+
+1. Run AutoDiff with a CVE ID
+
+```bash
+    diffrays autodiff --cve CVE-2025-53149
+```
+
+2. Automatic Analysis
+    Diffrays will:  
+        - Identify the affected component.  
+        - Download both vulnerable and patched binaries.  
+        - Perform the diff and generate a results database automatically.  
+    
+    <img src="/diffrays/static/sample/autodiff.png">
 
 ---
 
