@@ -112,10 +112,10 @@ The autodiff command streamlines patch analysis by automatically fetching binari
 ```sh
     diffrays autodiff --cve CVE-2025-29824
 ```
-This will:
-    - Automatically locate vulnerable and patched binaries related to the CVE with the help of [Winbindex](https://winbindex.m417z.com/).
-    - Run the diff engine.
-    - Generate a results database.
+This will:  
+    - Automatically locate vulnerable and patched binaries related to the CVE with the help of [Winbindex](https://winbindex.m417z.com/).  
+    - Run the diff engine.  
+    - Generate a results database.  
 
 **Example 2: Run by File + Month**
 
@@ -123,10 +123,10 @@ This will:
     diffrays autodiff -f clfs.sys -m 2025-09
 ```
 
-This will:
-    - Download `clfs.sys` from the September 2025 update.
-    - Locate its prior version and run a diff automatically.
-    - Provide a fallback when `--cve` doesn’t correctly identify the vulnerable component (which can happen if the CVE affects multiple binaries or metadata is incomplete).
+This will:  
+    - Download `clfs.sys` from the September 2025 update.  
+    - Locate its prior version and run a diff automatically.  
+    - Provide a fallback when `--cve` doesn’t correctly identify the vulnerable component (which can happen if the CVE affects multiple binaries or metadata is incomplete).  
 
 
 ### ⚙️ Manual Binary Diffing
