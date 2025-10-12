@@ -107,6 +107,8 @@ For more information, visit: https://github.com/pwnfuzz/diffrays
 
 The autodiff command streamlines patch analysis by automatically fetching binaries (via CVE or manual parameters) and running a diff without manual downloads.
 
+> This works only for Windows components, not for other third-party products.
+
 **Example 1: Run by CVE**
 
 ```sh
