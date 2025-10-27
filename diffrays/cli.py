@@ -31,7 +31,7 @@ ______ _  __  ________
 | |/ /| | | | | | |\ \ (_| | |_| \__ \ 
 |___/ |_|_| |_| \_| \_\__,_|\__, |___/ 
                              __/ |    
-                            |___/      {Fore.YELLOW}v1.6 Delta{Style.RESET_ALL}
+                            |___/      {Fore.YELLOW}v1.6 Pi{Style.RESET_ALL}
 """
 
 def print_success(message):
