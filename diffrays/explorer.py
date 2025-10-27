@@ -60,8 +60,6 @@ def print_metadata(full_meta: dict) -> None:
     print(f"Architecture    : {arch_color}{metadata['architecture']} ({metadata['bitness']}-bit){Style.RESET_ALL}")
     print(f"Format          : {Fore.CYAN}{metadata['format']}{Style.RESET_ALL}")
     print(f"Load Time       : {metadata['load_time']}")
-    print(f"Compiler Info   : {Fore.YELLOW}{metadata['compiler_information']}{Style.RESET_ALL}")
-    print(f"Execution Mode  : {Fore.CYAN}{metadata['execution_mode']}{Style.RESET_ALL}")
 
 def _compress_metadata(metadata: Dict[str, Any]) -> bytes:
     """Compress metadata dictionary to bytes"""
