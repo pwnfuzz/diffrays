@@ -38,28 +38,37 @@ DiffRays is a research-oriented tool for **binary patch diffing**, designed to a
 
 ---
 
-## ⚙️ Setup
+## ⚙️ Installation
 
-1. **Clone the repository**  
-    ```bash
-   git clone https://github.com/pwnfuzz/diffrays
-   cd diffrays
-    ```
+### Quick Install (Recommended)
 
-2. **Install dependencies**  
-    ```bash
-    pip install .
-    ```
+```bash
+pip install diffrays
+```
 
-3. **Setup IDADIR environment variable to point to your IDA installation directory:**  
+### Alternative: Install from Source
 
-    ```bash
-    Windows:
-        set IDADIR="[IDA Installation Directory]"
+If you want to install from the latest development version:
 
-    Linux:
-        export IDADIR="[IDA Installation Directory]"
-    ```
+```bash
+git clone https://github.com/pwnfuzz/diffrays
+cd diffrays
+pip install .
+```
+
+---
+
+## 🔧 Setup
+
+**Setup IDADIR environment variable to point to your IDA installation directory:**  
+
+```bash
+Windows:
+    set IDADIR="[IDA Installation Directory]"
+
+Linux:
+    export IDADIR="[IDA Installation Directory]"
+```
 
 ---
 
