@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diffrays"
-version = "1.6.1"
+version = "1.6.2"
 description = "Binary Diff Analysis Tool - Decompile, Compare, and Visualize Binary Changes"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -15,9 +15,9 @@ authors = [
 ]
 
 dependencies = [
-    "flask>=2.0.0",
-    "tqdm>=4.60.0",
-    "ida-domain>=0.1.0",
+    "flask",
+    "tqdm",
+    "ida-domain",
     "requests"
 ]
 
