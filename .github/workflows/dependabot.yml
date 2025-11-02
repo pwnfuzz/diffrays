@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # 1. Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    # Uncomment this if you want all deps updated in one PR instead of many
+    # groups:
+    #   all-deps:
+    #     patterns:
+    #       - "*"
+
+  # 2. GitHub Actions (optional but useful)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
