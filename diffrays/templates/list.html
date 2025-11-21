@@ -1,3 +1,24 @@
+{% set smart_mode = smart_mode|default(False) %}
+{% set col_count = 1 %}
+{% if show_diff_columns or show_signature_only %}
+  {% set col_count = col_count + 2 %}
+  {% if show_diff_columns %}
+    {% set col_count = col_count + 2 %}
+  {% endif %}
+{% endif %}
+{% if show_score %}
+  {% if smart_mode %}
+    {% set col_count = col_count + 1 %}
+  {% else %}
+    {% set col_count = col_count + 2 %}
+  {% endif %}
+{% endif %}
+{% if show_version %}
+  {% set col_count = col_count + 1 %}
+{% endif %}
+{% if show_diff_columns or show_signature_only %}
+  {% set col_count = col_count + 1 %}
+{% endif %}
 {% extends "base.html" %}
 
 {% block content %}
@@ -8,6 +29,12 @@
   {% endif %}
   <input name="q" class="input" type="text" placeholder="Search…" value="{{ q or '' }}" />
   <button class="btn" type="submit">Search</button>
+  {% if current_tab == 'diffs' %}
+  <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;">
+    <input type="checkbox" name="smart" value="1" {% if smart_mode %}checked{% endif %} onchange="this.form.submit()" />
+    Smart Diff
+  </label>
+  {% endif %}
   {% if q %}
   <a class="btn secondary" href="{{ request.path }}">Clear</a>
   {% endif %}
@@ -25,12 +52,8 @@
       {% endif %}
       {% endif %}
       {% if show_score %}
-      <th id="scoreHeader" style="cursor:pointer;" onclick="toggleScoreSort()" title="Normal ratio (difflib SequenceMatcher): Measures textual similarity of pseudocode, but can be noisy due to IDA’s formatting or renaming.">
-        <span>Ratio <span id="scoreArrow">↓</span></span>
-        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
-      </th>
-      <th id="smartRatioHeader" style="cursor:pointer;" onclick="toggleSmartRatioSort()" title="Smart ratio (with block counts): Incorporates structural changes in basic blocks. When counts tie, higher block counts are prioritized.">
-        <span>S. Ratio <span id="smartRatioArrow">↓</span></span>
+      <th id="scoreHeader" style="cursor:pointer;" onclick="toggleScoreSort()" title="{% if smart_mode %}Smart ratio (Ghidra correlator + block counts). Only shows functions with smart_ratio >= 0.0005.{% else %}Normal ratio (difflib SequenceMatcher): Measures textual similarity of pseudocode.{% endif %}">
+        <span>{% if smart_mode %}Smart Ratio{% else %}Ratio{% endif %} <span id="scoreArrow">↓</span></span>
         <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--muted); opacity:.7; margin-left:6px; vertical-align:middle;" aria-hidden="true"></span>
       </th>
       {% endif %}
@@ -43,6 +66,7 @@
     </tr>
   </thead>
   <tbody>
+    {% if items %}
     {% for it in items %}
     <tr>
       <td>
@@ -71,8 +95,12 @@
       {% endif %}
       {% endif %}
       {% if show_score %}
+      {% if smart_mode %}
+      {% set sr = it.smart_ratio %}
+      <td data-score="{{ '%.6f'|format(sr or 0) }}" data-smart-mode="1" data-smart-ratio="{{ '%.6f'|format(sr or 0) }}" data-blocks-old="{{ it.old_blocks is not none and it.old_blocks or 0 }}" data-blocks-new="{{ it.new_blocks is not none and it.new_blocks or 0 }}">{{ '%.3f'|format(sr) }}</td>
+      {% else %}
       <td data-score="{{ '%.6f'|format(it.score) }}">{{ '%.3f'|format(it.score) }}</td>
-      <td data-smart-ratio="{{ '%.6f'|format(it.smart_ratio) }}" data-blocks-old="{{ it.old_blocks is not none and it.old_blocks or 0 }}" data-blocks-new="{{ it.new_blocks is not none and it.new_blocks or 0 }}">{{ '%.3f'|format(it.smart_ratio) }}</td>
+      {% endif %}
       {% endif %}
       {% if show_version %}
       <td>{{ it.version }}</td>
@@ -89,10 +117,10 @@
       {% endif %}
     </tr>
     {% endfor %}
+    {% else %}
+    <tr><td colspan="{{ col_count }}" class="empty">No items.</td></tr>
+    {% endif %}
   </tbody>
-  {% if not items %}
-  <tbody><tr><td colspan="100%" class="empty">No items.</td></tr></tbody>
-  {% endif %}
   </table>
 
 {% set total_pages = ((total_items or 0) + (per_page or 1) - 1) // (per_page or 1) %}
@@ -129,14 +157,41 @@
     if (arrow) arrow.textContent = (scoreAsc ? '↑' : '↓');
     const tbody = document.querySelector('#listTable tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    // Determine the column index of the Ratio cell (the th with id=scoreHeader)
+    // Determine the column index of the Ratio/Smart Ratio cell (the th with id=scoreHeader)
     const theadCells = Array.from(document.querySelectorAll('#listTable thead th'));
     let scoreIdx = theadCells.findIndex(th => th.id === 'scoreHeader');
     if (scoreIdx < 0) scoreIdx = 1; // fallback
     rows.sort((a,b)=>{
-      const sa = parseFloat(a.children[scoreIdx]?.getAttribute('data-score')) || 0;
-      const sb = parseFloat(b.children[scoreIdx]?.getAttribute('data-score')) || 0;
-      return scoreAsc ? sa - sb : sb - sa;
+      const cellA = a.children[scoreIdx];
+      const cellB = b.children[scoreIdx];
+      const isSmartMode = cellA?.getAttribute('data-smart-mode') === '1';
+      const sa = parseFloat(cellA?.getAttribute('data-score')) || 0;
+      const sb = parseFloat(cellB?.getAttribute('data-score')) || 0;
+      
+      if (isSmartMode) {
+        // For smart mode, break ties by total blocks (like smart ratio sort)
+        if (!scoreAsc) {
+          if (sb !== sa) return sb - sa;
+          const ab_old = parseInt(cellA?.getAttribute('data-blocks-old')) || 0;
+          const ab_new = parseInt(cellA?.getAttribute('data-blocks-new')) || 0;
+          const bb_old = parseInt(cellB?.getAttribute('data-blocks-old')) || 0;
+          const bb_new = parseInt(cellB?.getAttribute('data-blocks-new')) || 0;
+          const atotal = ab_old + ab_new;
+          const btotal = bb_old + bb_new;
+          return btotal - atotal;
+        } else {
+          if (sa !== sb) return sa - sb;
+          const ab_old = parseInt(cellA?.getAttribute('data-blocks-old')) || 0;
+          const ab_new = parseInt(cellA?.getAttribute('data-blocks-new')) || 0;
+          const bb_old = parseInt(cellB?.getAttribute('data-blocks-old')) || 0;
+          const bb_new = parseInt(cellB?.getAttribute('data-blocks-new')) || 0;
+          const atotal = ab_old + ab_new;
+          const btotal = bb_old + bb_new;
+          return btotal - atotal;
+        }
+      } else {
+        return scoreAsc ? sa - sb : sb - sa;
+      }
     });
     rows.forEach(r=>tbody.appendChild(r));
   }

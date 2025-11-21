@@ -55,12 +55,23 @@
       text-decoration: none;
       padding: 6px 10px;
       border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     }
     .nav a.active {
       background: var(--bg-elev);
       border: 1px solid var(--border);
     }
     .nav a:hover { color: var(--link-hover); }
+  .count-chip {
+    background: var(--chip);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
     .logo-container { display: flex; align-items: center; }
     .logo { height: 72px; width: auto; margin-right: 8px; }
     .right-controls { display: flex; gap: 8px; align-items: center; }
@@ -120,9 +131,15 @@
       <strong style="display:none;">diffrays</strong>
     </div>
     <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
-    <a href="{{ url_for('diffs_page') }}" class="{% if request.endpoint == 'diffs_page' %}active{% endif %}">Diff Result</a>
-    <a href="{{ url_for('unchanged_page') }}" class="{% if request.endpoint == 'unchanged_page' %}active{% endif %}">Unchanged</a>
-    <a href="{{ url_for('unmatched_page') }}" class="{% if request.endpoint == 'unmatched_page' %}active{% endif %}">Unmatched</a>
+    <a href="{{ url_for('diffs_page') }}" class="{% if request.endpoint == 'diffs_page' %}active{% endif %}">
+      Diff Result{% if nav_counts and nav_counts.diffs is not none %} <span class="count-chip">{{ nav_counts.diffs }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('unchanged_page') }}" class="{% if request.endpoint == 'unchanged_page' %}active{% endif %}">
+      Unchanged{% if nav_counts and nav_counts.unchanged is not none %} <span class="count-chip">{{ nav_counts.unchanged }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('unmatched_page') }}" class="{% if request.endpoint == 'unmatched_page' %}active{% endif %}">
+      Unmatched{% if nav_counts and nav_counts.unmatched is not none %} <span class="count-chip">{{ nav_counts.unmatched }}</span>{% endif %}
+    </a>
   </div>
   <div class="right-controls">
     <button id="themeToggle" class="btn" aria-label="Toggle theme">🌙</button>

@@ -8,7 +8,8 @@ from pathlib import Path
 import ida_domain
 from ida_domain.database import IdaCommandOptions
 from ida_domain.names import DemangleFlags, SetNameFlags
-from diffrays.database import insert_function, insert_function_with_meta, compress_pseudo, init_db, upsert_binary_metadata, compute_and_store_diffs
+from diffrays.database import insert_function, insert_function_with_meta, insert_function_with_features, compress_pseudo, init_db, upsert_binary_metadata, compute_and_store_diffs
+from diffrays.heuristics import extract_function_features
 from diffrays.explorer import explore_database
 from diffrays.log import log
 
@@ -169,35 +170,44 @@ def analyze_binary(db_path: str, version: str, debug: bool = False, error_stats:
                         signature = ""
                     
                     # Get pseudocode
+                    pseudo = None
                     try:
                         pseudo = db.functions.get_pseudocode(func)
                         if not pseudo:
                             if debug:
                                 log.debug(f"No pseudocode for function: {name}")
-                            skipped_count += 1
-                            continue
+                            # Don't skip - insert with empty pseudocode so function is still tracked
+                            pseudo = []
                     except Exception as e:
                         log.warning(f"Failed to get pseudocode for function {name}: {e}")
-                        skipped_count += 1
-                        continue
+                        # Don't skip - insert with empty pseudocode so function is still tracked
+                        pseudo = []
                     
                     # Compress pseudocode
                     try:
-                        compressed = compress_pseudo(pseudo)
+                        compressed = compress_pseudo(pseudo) if pseudo else compress_pseudo([""])
                         if not compressed:
-                            log.warning(f"Failed to compress pseudocode for function {name}")
-                            skipped_count += 1
-                            continue
+                            log.warning(f"Failed to compress pseudocode for function {name}, using empty")
+                            compressed = compress_pseudo([""])
                     except Exception as e:
-                        log.warning(f"Failed to compress pseudocode for function {name}: {e}")
-                        skipped_count += 1
-                        continue
+                        log.warning(f"Failed to compress pseudocode for function {name}: {e}, using empty")
+                        compressed = compress_pseudo([""])
+                    
+                    # Extract function features for heuristics
+                    try:
+                        # Get binary base address for RVA calculation
+                        binary_base = db.minimum_ea if hasattr(db, 'minimum_ea') else 0
+                        features = extract_function_features(db, func, binary_base)
+                    except Exception as e:
+                        log.warning(f"Failed to extract features for function {name}: {e}")
+                        # Continue with basic features
+                        features = None
                     
                     analyzed_count += 1
                     if debug:
                         print(f"\rFunctions Analyzed: {analyzed_count}/{total_functions} (Skipped: {skipped_count})", end="", flush=True)
                     
-                    yield name, compressed, func.start_ea, bb_count, signature
+                    yield name, compressed, func.start_ea, bb_count, signature, features
                     
                 except Exception as e:
                     error_msg = f"Error processing function {func_idx} at {func.start_ea:X}"
@@ -232,7 +242,7 @@ def analyze_binary(db_path: str, version: str, debug: bool = False, error_stats:
             traceback.print_exc()
 
 
-def run_diff(old_path, new_path, db_path):
+def run_diff(old_path, new_path, db_path, debug: bool = False, use_heuristics: bool = False):
     """Run binary diff analysis between old and new binaries"""
     
     # Initialize error tracking
@@ -318,11 +328,22 @@ def run_diff(old_path, new_path, db_path):
         print()
         
         # Process old binary functions
-        for name, compressed, addr, blocks, signature in analyze_binary(old_path, "old", debug=True, error_stats=error_stats):
+        for result in analyze_binary(old_path, "old", debug=debug, error_stats=error_stats):
             try:
-                insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
+                # Handle both old format (5 items) and new format (6 items with features)
+                if len(result) == 6:
+                    name, compressed, addr, blocks, signature, features = result
+                    if features:
+                        insert_function_with_features(conn, "old", name, compressed, features)
+                    else:
+                        insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
+                else:
+                    name, compressed, addr, blocks, signature = result[:5]
+                    insert_function_with_meta(conn, "old", name, compressed, addr, blocks, signature)
             except Exception as e:
                 try:
+                    name = result[0]
+                    compressed = result[1]
                     insert_function(conn, "old", name, compressed)
                 except Exception as e2:
                     error_msg = f"Failed to insert function {name} from old binary"
@@ -377,11 +398,22 @@ def run_diff(old_path, new_path, db_path):
         print()
         
         # Process new binary functions
-        for name, compressed, addr, blocks, signature in analyze_binary(new_path, "new", debug=True, error_stats=error_stats):
+        for result in analyze_binary(new_path, "new", debug=debug, error_stats=error_stats):
             try:
-                insert_function_with_meta(conn, "new", name, compressed, addr, blocks, signature)
+                # Handle both old format (5 items) and new format (6 items with features)
+                if len(result) == 6:
+                    name, compressed, addr, blocks, signature, features = result
+                    if features:
+                        insert_function_with_features(conn, "new", name, compressed, features)
+                    else:
+                        insert_function_with_meta(conn, "new", name, compressed, addr, blocks, signature)
+                else:
+                    name, compressed, addr, blocks, signature = result[:5]
+                    insert_function_with_meta(conn, "new", name, compressed, addr, blocks, signature)
             except Exception as e:
                 try:
+                    name = result[0]
+                    compressed = result[1]
                     insert_function(conn, "new", name, compressed)
                 except Exception as e2:
                     error_msg = f"Failed to insert function {name} from new binary"
@@ -400,7 +432,8 @@ def run_diff(old_path, new_path, db_path):
         # Compute and store diffs
         try:
             log.info("Computing diffs and populating diff_results table...")
-            compute_and_store_diffs(conn)
+            log.info(f"Using heuristics: {use_heuristics}")
+            compute_and_store_diffs(conn, use_heuristics=use_heuristics)
             log.info("Diff computation completed successfully")
         except Exception as e:
             error_msg = "Failed to compute/store diffs"

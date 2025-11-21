@@ -22,9 +22,12 @@ class FunctionInfo:
     modification_score: float = 0.0
     modification_level: str = "unchanged"
     smart_ratio: float = 0.0
+    ratio: float = 0.0
     id: Optional[int] = None
     old_meta: Optional[Dict[str, Any]] = None
     new_meta: Optional[Dict[str, Any]] = None
+    old_func_id: Optional[int] = None
+    new_func_id: Optional[int] = None
 
 
 # -----------------------------
@@ -139,7 +142,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                 old_text = decompress(r["old_pseudocode"]) if r["old_pseudocode"] else None
                 new_text = decompress(r["new_pseudocode"]) if r["new_pseudocode"] else None
                 fi = FunctionInfo(r["function_name"], old_text, new_text)
-                fi.modification_score = 1.0 - float(r["ratio"] or 0.0)
+                fi.ratio = float(r["ratio"] or 0.0)
+                fi.modification_score = 1.0 - fi.ratio
                 fi.smart_ratio = float(r["smart_ratio"] or 0.0)
                 fi.id = r["id"]
                 fi.old_meta = {"address": r["old_address"], "blocks": r["old_blocks"], "signature": r["old_signature"]}
@@ -153,9 +157,70 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                     functions_by_level["significant"].append(fi)
 
         # Also compute unmatched/unchanged using remaining functions table
-        rows = conn.execute("SELECT function_name, binary_version, pseudocode, address, blocks, signature FROM functions").fetchall()
+        # Build a set of function names already in diff_results to avoid double-counting
+        already_counted = set()
+        if schema.get("has_diff"):
+            already_counted_rows = conn.execute("SELECT function_name FROM diff_results").fetchall()
+            for r in already_counted_rows:
+                # Handle function names like "old_name -> new_name" from heuristic matching
+                func_name = r["function_name"]
+                if " -> " in func_name:
+                    # Extract both names
+                    parts = func_name.split(" -> ", 1)
+                    already_counted.add(parts[0])
+                    already_counted.add(parts[1])
+                else:
+                    already_counted.add(func_name)
+        
+        # Load matched rename pairs that were deemed unchanged
+        matched_pairs = conn.execute("SELECT old_name, new_name, status FROM matched_pairs").fetchall()
+        for mp in matched_pairs:
+            if mp["status"] != "unchanged":
+                continue
+            old_row = conn.execute(
+                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'old'",
+                (mp["old_name"],)
+            ).fetchone()
+            new_row = conn.execute(
+                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'new'",
+                (mp["new_name"],)
+            ).fetchone()
+            fi = FunctionInfo(
+                name=f"{mp['old_name']} -> {mp['new_name']}",
+                old_text=None,
+                new_text=None,
+                modification_score=0.0,
+                modification_level="unchanged",
+                smart_ratio=0.0,
+                ratio=1.0,
+            )
+            fi.old_meta = {
+                "address": old_row["address"] if old_row else None,
+                "blocks": old_row["blocks"] if old_row else None,
+                "signature": old_row["signature"] if old_row else None,
+                "func_id": old_row["id"] if old_row else None,
+                "function_name": mp["old_name"],
+            }
+            fi.new_meta = {
+                "address": new_row["address"] if new_row else None,
+                "blocks": new_row["blocks"] if new_row else None,
+                "signature": new_row["signature"] if new_row else None,
+                "func_id": new_row["id"] if new_row else None,
+                "function_name": mp["new_name"],
+            }
+            fi.old_func_id = fi.old_meta.get("func_id") if fi.old_meta else None
+            fi.new_func_id = fi.new_meta.get("func_id") if fi.new_meta else None
+            functions_by_level["unchanged"].append(fi)
+            already_counted.add(mp["old_name"])
+            already_counted.add(mp["new_name"])
+        
+        rows = conn.execute("SELECT function_name, binary_version, pseudocode, address, blocks, signature, id FROM functions").fetchall()
         for row in rows:
             func_name = row["function_name"]
+            # Skip if this function is already in diff_results
+            if func_name in already_counted:
+                continue
+                
             version = row["binary_version"]
             pseudocode = decompress(row["pseudocode"]) 
             address = row["address"]
@@ -164,23 +229,31 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             if func_name not in func_dict:
                 func_dict[func_name] = {
                     "old": None, "new": None,
-                    "old_meta": {"address": None, "blocks": None, "signature": None},
-                    "new_meta": {"address": None, "blocks": None, "signature": None},
+                    "old_meta": {"address": None, "blocks": None, "signature": None, "func_id": None},
+                    "new_meta": {"address": None, "blocks": None, "signature": None, "func_id": None},
                 }
             if version == "old":
                 func_dict[func_name]["old"] = pseudocode
-                func_dict[func_name]["old_meta"] = {"address": address, "blocks": blocks, "signature": signature}
+                func_dict[func_name]["old_meta"] = {"address": address, "blocks": blocks, "signature": signature, "func_id": row["id"]}
             elif version == "new":
                 func_dict[func_name]["new"] = pseudocode
-                func_dict[func_name]["new_meta"] = {"address": address, "blocks": blocks, "signature": signature}
+                func_dict[func_name]["new_meta"] = {"address": address, "blocks": blocks, "signature": signature, "func_id": row["id"]}
 
         for func_name, versions in func_dict.items():
+            # Skip if already counted in diff_results
+            if func_name in already_counted:
+                continue
+                
             old_txt = versions["old"]
             new_txt = versions["new"]
             if old_txt is None and new_txt is not None:
-                functions_by_level["added"].append(FunctionInfo(func_name, old_txt, new_txt))
+                fi = FunctionInfo(func_name, old_txt, new_txt)
+                fi.new_meta = versions["new_meta"]
+                functions_by_level["added"].append(fi)
             elif old_txt is not None and new_txt is None:
-                functions_by_level["removed"].append(FunctionInfo(func_name, old_txt, new_txt))
+                fi = FunctionInfo(func_name, old_txt, new_txt)
+                fi.old_meta = versions["old_meta"]
+                functions_by_level["removed"].append(fi)
             elif old_txt is not None and new_txt is not None and old_txt == new_txt:
                 fi = FunctionInfo(func_name, old_txt, new_txt)
                 fi.old_meta = versions["old_meta"]
@@ -531,6 +604,11 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         }
 
         meta = fetch_binary_metadata(conn)
+        nav_counts = {
+            "diffs": len(categories.get("significant", [])) + len(categories.get("moderate", [])) + len(categories.get("minor", [])) + len(categories.get("major", [])),
+            "unchanged": unchanged,
+            "unmatched": unmatched,
+        }
         return render_template(
             "dashboard.html",
             subtitle=f"Dashboard — {Path(app.config['DB_PATH']).name}",
@@ -541,6 +619,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
                 "unmatched": unmatched
             },
             counts=counts,
+            nav_counts=nav_counts,
             meta=meta
         )
 
@@ -560,11 +639,19 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         items = []
         for lvl in levels:
             for f in categories.get(lvl, []):
+                match_ratio = getattr(f, "ratio", None)
+                if match_ratio is None:
+                    match_ratio = 1.0 - float(getattr(f, "modification_score", 0.0))
+                # Skip entries that are effectively unchanged (ratio ~1.0)
+                if match_ratio >= 0.999:
+                    continue
+                change_score = float(getattr(f, "modification_score", 0.0) or 0.0)
                 items.append({
                     "id": getattr(f, 'id', None),
                     "name": f.name,
-                    "score": f.modification_score,
-                    "smart_ratio": f.smart_ratio,
+                    "score": match_ratio,
+                    "change_score": change_score,
+                    "smart_ratio": float(getattr(f, "smart_ratio", 0.0) or 0.0),
                     "old_addr": (f.old_meta or {}).get("address"),
                     "new_addr": (f.new_meta or {}).get("address"),
                     "old_blocks": (f.old_meta or {}).get("blocks"),
@@ -577,6 +664,14 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         q_lower = q.lower()
         if q_lower:
             items = [it for it in items if (it.get("name", "").lower().find(q_lower) != -1) or (str(it.get("signature") or "").lower().find(q_lower) != -1)]
+
+        smart_mode = request.args.get("smart") == "1"
+        
+        # Filter by smart ratio when Smart Diff mode is enabled
+        # Only show functions with smart_ratio between 0.001 and 0.999 (partially changed)
+        # Hide functions with smart_ratio <= 0.000 (unchanged) or >= 1.0 (completely different)
+        if smart_mode:
+            items = [it for it in items if 0.001 <= it.get("smart_ratio", 0.0) <= 0.999]
 
         per_page = 500
         try:
@@ -596,11 +691,17 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         base_query = urlencode(preserved)
         page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
 
+        nav_counts = {
+            "diffs": total_items,
+            "unchanged": len(categories.get("unchanged", [])),
+            "unmatched": len(categories.get("added", [])) + len(categories.get("removed", [])),
+        }
         return render_template(
             "list.html",
             title=(f"Diff Result — {levels[0].title()}" if filter_level else "Diff Result"),
             items=page_items,
             show_score=True,
+            smart_mode=smart_mode,
             show_version=False,
             open_raw=False,
             current_tab='diffs',
@@ -609,7 +710,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             page=page,
             per_page=per_page,
             total_items=total_items,
-            page_qs_prefix=page_qs_prefix
+            page_qs_prefix=page_qs_prefix,
+            nav_counts=nav_counts,
         )
 
     @app.route("/unchanged")
@@ -618,19 +720,27 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         categories = get_all_functions_with_scores(conn)
         items = []
         for f in categories.get("unchanged", []):
-            # Prefer the 'old' row id for stable viewing
-            row = conn.execute(
-                "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'old'",
-                (f.name,),
-            ).fetchone()
-            func_id = row["id"] if row else None
+            old_meta = getattr(f, 'old_meta', {}) or {}
+            new_meta = getattr(f, 'new_meta', {}) or {}
+            func_id = old_meta.get("func_id")
+            old_addr = old_meta.get("address")
+            new_addr = new_meta.get("address")
+            signature = new_meta.get("signature") or old_meta.get("signature")
+            if func_id is None:
+                row = conn.execute(
+                    "SELECT id, address, blocks, signature FROM functions WHERE function_name = ? AND binary_version = 'old'",
+                    (f.name,),
+                ).fetchone()
+                func_id = row["id"] if row else None
+                old_addr = old_addr if old_addr is not None else (row["address"] if row else None)
+                signature = signature or (row["signature"] if row else None)
             items.append({
                 "id": None,
                 "name": f.name,
                 "version": "old",
-                "old_addr": (getattr(f, 'old_meta', None) or {}).get("address"),
-                "new_addr": (getattr(f, 'new_meta', None) or {}).get("address"),
-                "signature": (getattr(f, 'new_meta', None) or {}).get("signature") or (getattr(f, 'old_meta', None) or {}).get("signature"),
+                "old_addr": old_addr,
+                "new_addr": new_addr,
+                "signature": signature,
                 "func_id": func_id,
             })
         # Server-side search & pagination
@@ -656,6 +766,11 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         base_query = urlencode(preserved)
         page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
 
+        nav_counts = {
+            "diffs": len(categories.get("significant", [])) + len(categories.get("moderate", [])) + len(categories.get("minor", [])) + len(categories.get("major", [])),
+            "unchanged": len(items),
+            "unmatched": len(categories.get("unmatched", [])),
+        }
         return render_template(
             "list.html",
             title="Unchanged",
@@ -669,7 +784,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             page=page,
             per_page=per_page,
             total_items=total_items,
-            page_qs_prefix=page_qs_prefix
+            page_qs_prefix=page_qs_prefix,
+            nav_counts=nav_counts,
         )
 
     @app.route("/unmatched")
@@ -737,6 +853,11 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         base_query = urlencode(preserved)
         page_qs_prefix = ("?" + base_query + ("&" if base_query else ""))
 
+        nav_counts = {
+            "diffs": len(categories.get("significant", [])) + len(categories.get("moderate", [])) + len(categories.get("minor", [])) + len(categories.get("major", [])),
+            "unchanged": len(categories.get("unchanged", [])),
+            "unmatched": len(items),
+        }
         return render_template(
             "list.html",
             title="Unmatched",
@@ -750,7 +871,8 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             page=page,
             per_page=per_page,
             total_items=total_items,
-            page_qs_prefix=page_qs_prefix
+            page_qs_prefix=page_qs_prefix,
+            nav_counts=nav_counts,
         )
 
     @app.route("/function/<int:item_id>")
@@ -811,10 +933,32 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
             "SELECT function_name, binary_version, LENGTH(pseudocode) as size FROM functions ORDER BY function_name, binary_version"
         ).fetchall()
         
-        result = "<h1>Database Contents</h1><table border='1'><tr><th>Function Name</th><th>Version</th><th>Size</th></tr>"
+        diff_results = conn.execute(
+            "SELECT function_name, modification_level FROM diff_results ORDER BY function_name"
+        ).fetchall()
+        
+        result = "<h1>Database Contents</h1>"
+        result += f"<h2>Functions Table: {len(functions)} rows</h2>"
+        result += "<table border='1'><tr><th>Function Name</th><th>Version</th><th>Size</th></tr>"
         for row in functions:
             result += f"<tr><td>{row['function_name']}</td><td>{row['binary_version']}</td><td>{row['size']}</td></tr>"
         result += "</table>"
+        
+        result += f"<h2>Diff Results Table: {len(diff_results)} rows</h2>"
+        result += "<table border='1'><tr><th>Function Name</th><th>Modification Level</th></tr>"
+        for row in diff_results:
+            result += f"<tr><td>{row['function_name']}</td><td>{row['modification_level']}</td></tr>"
+        result += "</table>"
+        
+        # Count by category
+        categories = get_all_functions_with_scores(conn)
+        result += "<h2>Counts by Category</h2>"
+        result += "<table border='1'><tr><th>Category</th><th>Count</th></tr>"
+        for cat, funcs in categories.items():
+            result += f"<tr><td>{cat}</td><td>{len(funcs)}</td></tr>"
+        result += "</table>"
+        result += f"<p><strong>Total: {sum(len(v) for v in categories.values())}</strong></p>"
+        
         return result
 
     @app.route("/raw/<int:item_id>")

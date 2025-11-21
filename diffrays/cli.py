@@ -31,7 +31,7 @@ ______ _  __  ________
 | |/ /| | | | | | |\ \ (_| | |_| \__ \ 
 |___/ |_|_| |_| \_| \_\__,_|\__, |___/ 
                              __/ |    
-                            |___/      {Fore.YELLOW}v1.6.2 Pi{Style.RESET_ALL}
+                            |___/      {Fore.YELLOW}v2.0 Tau{Style.RESET_ALL}
 """
 
 def print_success(message):
@@ -87,7 +87,7 @@ def check_ida_available():
         # Only log warning if debug mode is enabled elsewhere
         return False
 
-def run_diff_safe(old_path, new_path, output_db, log_file, debug_mode):
+def run_diff_safe(old_path, new_path, output_db, log_file, debug_mode, use_heuristics=False):
     """Safely run diff analysis with proper error handling"""
     try:
         from diffrays.analyzer import run_diff
@@ -95,9 +95,10 @@ def run_diff_safe(old_path, new_path, output_db, log_file, debug_mode):
         if debug_mode:
             log.info(f"Starting analysis: {old_path} -> {new_path}")
             log.info(f"Output database: {output_db}")
+            log.info(f"Using heuristics: {use_heuristics}")
         
         # print_info(f"Analyzing binaries...")
-        run_diff(old_path, new_path, output_db)
+        run_diff(old_path, new_path, output_db, debug=debug_mode, use_heuristics=use_heuristics)
         
         if debug_mode:
             log.info("Analysis completed successfully!")
@@ -153,6 +154,7 @@ def main():
     diff_parser.add_argument("-o", "--output", help="SQLite output file (default: auto-generated)")
     diff_parser.add_argument("--log", action="store_true", help="Store logs in file")
     diff_parser.add_argument("--debug", action="store_true", help="Enable debug logging and verbose output")
+    diff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching (default: match by function names only)")
 
     # Server command
     server_parser = sub.add_parser("server", help="Launch web server to view diff results")
@@ -173,6 +175,7 @@ def main():
     autodiff_parser.add_argument("-o", "--output", help="SQLite output file (default: auto-generated)",)
     autodiff_parser.add_argument("--log", action="store_true", help="Store logs in file")
     autodiff_parser.add_argument("--debug", action="store_true", help="Enable debug logging and verbose output")
+    autodiff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching (default: match by function names only)")
 
     args = parser.parse_args()
 
@@ -199,6 +202,8 @@ def main():
         print_config_line("Log File:", log_file or 'None')
         print_config_line("Debug Mode:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if debug_mode else f"{Fore.RED}Disabled{Style.RESET_ALL}")
         print_config_line("Logging:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if getattr(args, 'log', False) else f"{Fore.RED}Disabled{Style.RESET_ALL}")
+        use_heuristics = getattr(args, 'heuristic', False)
+        print_config_line("Heuristics:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if use_heuristics else f"{Fore.YELLOW}Disabled{Style.RESET_ALL}")
         print_separator()
         print()
         
@@ -209,7 +214,7 @@ def main():
             log.info(f"Logging to file: {log_file}")
 
         # Run diff safely
-        run_diff_safe(args.old, args.new, output_db, log_file, debug_mode)
+        run_diff_safe(args.old, args.new, output_db, log_file, debug_mode, use_heuristics=use_heuristics)
 
     elif args.command == "server":
         log_file = None
@@ -326,6 +331,8 @@ def main():
         print_config_line("Output DB:", args.output or f'{Fore.YELLOW}Auto-generated{Style.RESET_ALL}')
         print_config_line("Debug Mode:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if debug_mode else f"{Fore.RED}Disabled{Style.RESET_ALL}")
         print_config_line("Logging:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if getattr(args, 'log', False) else f"{Fore.RED}Disabled{Style.RESET_ALL}")
+        use_heuristics = getattr(args, 'heuristic', False)
+        print_config_line("Heuristics:", f"{Fore.GREEN}Enabled{Style.RESET_ALL}" if use_heuristics else f"{Fore.YELLOW}Disabled{Style.RESET_ALL}")
         print_separator()
         print()
 
@@ -378,7 +385,8 @@ def main():
 
             print_separator()
             print()
-            run_diff_safe(vulnerable_file, patched_file, output_db, log_file, debug_mode)
+            use_heuristics = getattr(args, 'heuristic', False)
+            run_diff_safe(vulnerable_file, patched_file, output_db, log_file, debug_mode, use_heuristics=use_heuristics)
 
         except Exception as e:
             if debug_mode:
