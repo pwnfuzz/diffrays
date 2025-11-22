@@ -769,7 +769,7 @@ def create_app(db_path: str, log_file: Optional[str] = None, host: str = "127.0.
         nav_counts = {
             "diffs": len(categories.get("significant", [])) + len(categories.get("moderate", [])) + len(categories.get("minor", [])) + len(categories.get("major", [])),
             "unchanged": len(items),
-            "unmatched": len(categories.get("unmatched", [])),
+            "unmatched": len(categories.get("added", [])) + len(categories.get("removed", [])),
         }
         return render_template(
             "list.html",

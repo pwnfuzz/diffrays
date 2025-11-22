@@ -154,7 +154,7 @@ def main():
     diff_parser.add_argument("-o", "--output", help="SQLite output file (default: auto-generated)")
     diff_parser.add_argument("--log", action="store_true", help="Store logs in file")
     diff_parser.add_argument("--debug", action="store_true", help="Enable debug logging and verbose output")
-    diff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching (default: match by function names only)")
+    diff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching")
 
     # Server command
     server_parser = sub.add_parser("server", help="Launch web server to view diff results")
@@ -175,7 +175,7 @@ def main():
     autodiff_parser.add_argument("-o", "--output", help="SQLite output file (default: auto-generated)",)
     autodiff_parser.add_argument("--log", action="store_true", help="Store logs in file")
     autodiff_parser.add_argument("--debug", action="store_true", help="Enable debug logging and verbose output")
-    autodiff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching (default: match by function names only)")
+    autodiff_parser.add_argument("--heuristic", action="store_true", help="Use heuristic-based function matching")
 
     args = parser.parse_args()
 

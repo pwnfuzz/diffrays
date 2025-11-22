@@ -23,22 +23,32 @@
 
 {% block content %}
 <h3 style="margin: 0 0 8px 0;">{{ title }}</h3>
-<form method="get" style="margin-bottom:10px; display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
-  {% if request.args.get('level') %}
-  <input type="hidden" name="level" value="{{ request.args.get('level') }}" />
-  {% endif %}
-  <input name="q" class="input" type="text" placeholder="Search…" value="{{ q or '' }}" />
-  <button class="btn" type="submit">Search</button>
+<div style="margin-bottom:10px; display:flex; gap:8px; align-items:center; flex-wrap: wrap; justify-content: space-between;">
+  <form method="get" style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+    {% if request.args.get('level') %}
+    <input type="hidden" name="level" value="{{ request.args.get('level') }}" />
+    {% endif %}
+    <input name="q" class="input" type="text" placeholder="Search…" value="{{ q or '' }}" />
+    <button class="btn" type="submit">Search</button>
+    {% if current_tab == 'diffs' %}
+    <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;">
+      <input type="checkbox" name="smart" value="1" {% if smart_mode %}checked{% endif %} onchange="this.form.submit()" />
+      Smart Diff
+    </label>
+    {% endif %}
+    {% if q %}
+    <a class="btn secondary" href="{{ request.path }}">Clear</a>
+    {% endif %}
+  </form>
   {% if current_tab == 'diffs' %}
-  <label class="checkbox-label" style="display:flex;align-items:center;gap:6px;">
-    <input type="checkbox" name="smart" value="1" {% if smart_mode %}checked{% endif %} onchange="this.form.submit()" />
-    Smart Diff
+  <label style="display:flex;align-items:center;gap:6px;">
+    <span>Score Filter:</span>
+    <input type="number" id="scoreFilterMin" class="input" placeholder="Min" step="0.001" min="0" max="1" style="width:80px;" oninput="filterByScore()" />
+    <span>to</span>
+    <input type="number" id="scoreFilterMax" class="input" placeholder="Max" step="0.001" min="0" max="1" style="width:80px;" oninput="filterByScore()" />
   </label>
   {% endif %}
-  {% if q %}
-  <a class="btn secondary" href="{{ request.path }}">Clear</a>
-  {% endif %}
-</form>
+</div>
 <table class="list-table" id="listTable">
   <thead>
     <tr>
@@ -238,6 +248,85 @@
     rows.sort((a,b)=> a.children[0].innerText.localeCompare(b.children[0].innerText));
     rows.forEach(r=>tbody.appendChild(r));
   }
+  function filterByScore(){
+    const minInput = document.getElementById('scoreFilterMin');
+    const maxInput = document.getElementById('scoreFilterMax');
+    if (!minInput || !maxInput) return; // Filter inputs don't exist on this page
+    
+    const minValue = minInput.value === '' ? null : parseFloat(minInput.value);
+    const maxValue = maxInput.value === '' ? null : parseFloat(maxInput.value);
+    
+    // Save filter values to localStorage
+    const filterKey = 'diffrays_score_filter';
+    localStorage.setItem(filterKey, JSON.stringify({
+      min: minInput.value,
+      max: maxInput.value
+    }));
+    
+    const tbody = document.querySelector('#listTable tbody');
+    if (!tbody) return;
+    
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const theadCells = Array.from(document.querySelectorAll('#listTable thead th'));
+    const scoreIdx = theadCells.findIndex(th => th.id === 'scoreHeader');
+    
+    if (scoreIdx < 0) return;
+    
+    rows.forEach(row => {
+      // Skip empty rows
+      if (row.querySelector('.empty')) {
+        row.style.display = '';
+        return;
+      }
+      
+      const scoreCell = row.children[scoreIdx];
+      if (!scoreCell) {
+        row.style.display = '';
+        return;
+      }
+      
+      // Get the score value from data-score attribute
+      const score = parseFloat(scoreCell.getAttribute('data-score')) || 0;
+      
+      // Check if it passes the filter
+      let show = true;
+      if (minValue !== null && score < minValue) {
+        show = false;
+      }
+      if (maxValue !== null && score > maxValue) {
+        show = false;
+      }
+      
+      row.style.display = show ? '' : 'none';
+    });
+  }
+  
+  // Restore and apply filter on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    const minInput = document.getElementById('scoreFilterMin');
+    const maxInput = document.getElementById('scoreFilterMax');
+    if (!minInput || !maxInput) return;
+    
+    // Restore filter values from localStorage
+    const filterKey = 'diffrays_score_filter';
+    const saved = localStorage.getItem(filterKey);
+    if (saved) {
+      try {
+        const filter = JSON.parse(saved);
+        if (filter.min !== undefined && filter.min !== '') {
+          minInput.value = filter.min;
+        }
+        if (filter.max !== undefined && filter.max !== '') {
+          maxInput.value = filter.max;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
+    // Apply the filter after restoring values
+    filterByScore();
+  });
 </script>
 {% endblock %}
 
