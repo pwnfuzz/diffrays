@@ -6,10 +6,10 @@
 </picture>
 </p>
 
-<!--
 <img align="center" src="https://img.shields.io/github/stars/pwnfuzz/DiffRays?style=for-the-badge">
 <img align="center" src="https://img.shields.io/github/forks/pwnfuzz/DiffRays?style=for-the-badge">
--->
+<img align="center" alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/diffrays?color=yellow&label=PyPI%20downloads&style=for-the-badge">
+
 
 # DiffRays - IDA Pro Binary Diffing Engine
 
@@ -76,7 +76,6 @@ Linux:
 
 ```bash
 > diffrays --help
-
 ______ _  __  ________
 |  _  (_)/ _|/ _| ___ \
 | | | |_| |_| |_| |_/ /__ _ _   _ ___
@@ -84,7 +83,7 @@ ______ _  __  ________
 | |/ /| | | | | | |\ \ (_| | |_| \__ \
 |___/ |_|_| |_| \_| \_\__,_|\__, |___/
                              __/ |
-                            |___/      v1.6.1 Pi
+                            |___/      v2.0 Tau
 
 usage: diffrays [-h] {diff,server,autodiff} ...
 
@@ -157,6 +156,17 @@ This will:
 
 3. Open your browser at http://localhost:5555 to view results.
 
+
+### 👾 Analyzing Binaries Without Symbols
+
+When diffing binaries that contain no symbols or are stripped, you can enable heuristic matching. With heuristic mode, functions are matched based on code patterns and structural similarity rather than function names.
+
+> Note: Heuristic matching does not guarantee 100% accurate function matches, but it generally works well and continues to improve.
+
+```sh
+    python diffrays.py diff old_binary.exe new_binary.exe --heuristic
+```
+
 ---
 
 ## 🔬 Example Workflows
@@ -185,19 +195,19 @@ This will:
     ```
 
 4. **Browse interactively**
-	- Open http://127.0.0.1:5555
-	<br>
-	<img src="/diffrays/static/sample/dashboard.png">
+    - Open http://127.0.0.1:5555
+    <br>
+    <img src="/diffrays/static/sample/dashboard.png">
 
 5. **Browse Diff Results**
-	- The Diff Result page shows the results of binary diffing and can be sorted based on changes.
-	<br>
-	<img src="/diffrays/static/sample/diff.png">
+    - The Diff Result page shows the results of binary diffing and can be sorted based on changes.
+    <br>
+    <img src="/diffrays/static/sample/diff.png">
 
 6. **View Function Details**
-	- Clicking on a function displays the detailed diff result.
-	<br>
-	<img src="/diffrays/static/sample/result.png">
+    - Clicking on a function displays the detailed diff result.
+    <br>
+    <img src="/diffrays/static/sample/result.png">
 
 
 ### Automatic Diffing - CVE-2025-53149
