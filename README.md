@@ -6,9 +6,11 @@
 </picture>
 </p>
 
-<img align="center" src="https://img.shields.io/github/stars/pwnfuzz/DiffRays?style=for-the-badge">
-<img align="center" src="https://img.shields.io/github/forks/pwnfuzz/DiffRays?style=for-the-badge">
-<img align="center" alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/diffrays?color=yellow&label=PyPI%20downloads&style=for-the-badge">
+<p align="center">
+  <img src="https://img.shields.io/github/stars/pwnfuzz/DiffRays?style=for-the-badge">
+  <img src="https://img.shields.io/github/forks/pwnfuzz/DiffRays?style=for-the-badge">
+  <img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/diffrays?color=yellow&label=PyPI%20downloads&style=for-the-badge">
+</p>
 
 
 # DiffRays - IDA Pro Binary Diffing Engine
