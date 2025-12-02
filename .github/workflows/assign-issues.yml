@@ -14,6 +14,7 @@ jobs:
       - name: Assign issue to users
         uses: actions-ecosystem/action-add-assignees@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           assignees: |
             d4mianwayne
             ghostbyt3
