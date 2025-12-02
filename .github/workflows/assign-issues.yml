@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Assign issue to users
-      uses: actions-ecosystem/action-add-assignees@v1
+        uses: actions-ecosystem/action-add-assignees@v1
         with:
           assignees: |
             d4mianwayne
